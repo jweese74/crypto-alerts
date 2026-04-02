@@ -1,5 +1,8 @@
 # 📡 Crypto Alert System
 
+> **Project status: Feature-complete / Maintenance-only**
+> This project does exactly what it was built to do. It is not abandoned — it works, it is self-hostable, and bug reports are welcome. However, no new features are planned and active development has concluded. Use it, fork it, and make it your own.
+
 A **self-hosted, Dockerized, multi-user cryptocurrency alert system** powered by [Kraken](https://www.kraken.com/) public market data.
 
 > ⚠️ **Disclaimer:** This is a price-monitoring and alerting tool only. It does **not** execute trades, manage funds, or provide financial advice.
