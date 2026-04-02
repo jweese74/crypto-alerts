@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Admin — All Alerts{% endblock %}
+{% block content %}
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab admin-tab-active">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab">Security</a>
+</div>
+
+<div class="page-header">
+    <h1>All Alert Rules</h1>
+    <span class="text-muted">{{ rules | length }} total</span>
+</div>
+
+{% if rules %}
+<table>
+    <thead>
+        <tr>
+            <th>User</th>
+            <th>Name / Pair</th>
+            <th>Condition</th>
+            <th>Threshold</th>
+            <th>Status</th>
+            <th>Cooldown</th>
+            <th>Last Triggered</th>
+            <th class="action-col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for rule in rules %}
+        {% set owner = user_map.get(rule.user_id) %}
+        <tr class="{{ '' if rule.is_active else 'row-disabled' }}">
+            <td class="text-muted">{{ owner.username if owner else '—' }}</td>
+            <td>
+                <strong>{{ rule.label or rule.trading_pair }}</strong>
+                {% if rule.label %}<br><span class="text-muted" style="font-size:.8rem">{{ rule.trading_pair }}</span>{% endif %}
+            </td>
+            <td>
+                <span class="condition-badge condition-{{ rule.condition.value }}">
+                    {{ '▲' if rule.condition.value == 'above' else '▼' }} {{ rule.condition.value }}
+                </span>
+            </td>
+            <td>${{ "{:,.2f}".format(rule.threshold) }}</td>
+            <td>
+                <span class="badge {{ 'badge-success' if rule.is_active else 'badge-muted' }}">
+                    {{ 'Active' if rule.is_active else 'Paused' }}
+                </span>
+            </td>
+            <td class="text-muted">{{ rule.cooldown_minutes }}m</td>
+            <td class="text-muted">
+                {{ rule.last_triggered_at.strftime('%m-%d %H:%M') if rule.last_triggered_at else '—' }}
+            </td>
+            <td class="action-col">
+                <a href="/alerts/{{ rule.id }}/edit" class="btn-sm btn-secondary" title="Edit">✎</a>
+                <form method="post" action="/alerts/{{ rule.id }}/toggle" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm {{ 'btn-warning' if rule.is_active else 'btn-success' }}"
+                            title="{{ 'Pause' if rule.is_active else 'Enable' }}">
+                        {{ '⏸' if rule.is_active else '▶' }}
+                    </button>
+                </form>
+                <form method="post" action="/alerts/{{ rule.id }}/delete" class="inline-form"
+                      onsubmit="return confirm('Delete alert rule for {{ owner.username if owner else '' }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm btn-danger" title="Delete">✕</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">🔕</div>
+    <h2>No alert rules configured</h2>
+    <p>Users can create alerts from their dashboard.</p>
+</div>
+{% endif %}
+{% endblock %}

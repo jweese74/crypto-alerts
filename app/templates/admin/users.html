@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Admin — Users{% endblock %}
+{% block content %}
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab admin-tab-active">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab">Security</a>
+</div>
+
+<div class="page-header">
+    <h1>User Management</h1>
+    <button class="btn-primary" onclick="document.getElementById('create-user-modal').style.display='flex'">
+        + New User
+    </button>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr class="{{ 'row-disabled' if not u.is_active else '' }}">
+            <td><strong>{{ u.username }}</strong></td>
+            <td>{{ u.email }}</td>
+            <td>
+                <form method="post" action="/admin/users/{{ u.id }}/role" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <select name="role" onchange="this.form.submit()"
+                            {{ 'disabled' if u.id == user.id else '' }}>
+                        {% for role in roles %}
+                        <option value="{{ role.value }}"
+                                {{ 'selected' if u.role == role else '' }}>
+                            {{ role.value | capitalize }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </td>
+            <td>
+                <span class="badge {{ 'badge-success' if u.is_active else 'badge-muted' }}">
+                    {{ 'Active' if u.is_active else 'Disabled' }}
+                </span>
+            </td>
+            <td class="text-muted">{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+            <td class="action-col">
+                {% if u.id != user.id %}
+                <form method="post" action="/admin/users/{{ u.id }}/toggle-active" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm {{ 'btn-warning' if u.is_active else 'btn-success' }}">
+                        {{ 'Disable' if u.is_active else 'Enable' }}
+                    </button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.id }}/delete" class="inline-form"
+                      onsubmit="return confirm('Permanently delete {{ u.username }}?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm btn-danger">Delete</button>
+                </form>
+                {% else %}
+                <span class="text-muted">(you)</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">No users found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Create User Modal -->
+<div id="create-user-modal" class="modal-overlay" style="display:none">
+    <div class="modal">
+        <h2>Create New User</h2>
+        <form method="post" action="/admin/users">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <label>Username
+                <input type="text" name="username" pattern="[a-zA-Z0-9_\-]+"
+                       minlength="3" maxlength="50" required>
+            </label>
+            <label>Email
+                <input type="email" name="email" required>
+            </label>
+            <label>Password
+                <input type="password" name="password" minlength="8" required>
+            </label>
+            <label>Role
+                <select name="role">
+                    {% for role in roles %}
+                    <option value="{{ role.value }}">{{ role.value | capitalize }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <div class="modal-actions">
+                <button type="submit" class="btn-primary">Create User</button>
+                <button type="button" class="btn-secondary"
+                        onclick="document.getElementById('create-user-modal').style.display='none'">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

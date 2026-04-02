@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Admin — Supported Assets{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🛡 Admin — Supported Assets</h1>
+</div>
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab admin-tab-active">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab">Security</a>
+</div>
+
+{% if is_using_fallback %}
+<div class="flash-message flash-warning">
+    ⚠️ Using built-in fallback pair list — Kraken API was not reachable during last refresh.
+    <form method="post" action="/admin/assets/refresh" style="display:inline;margin-left:.5rem">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn-secondary" style="padding:.2rem .6rem;font-size:.85rem">Retry Now</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="stat-strip">
+    <div class="stat-card">
+        <div class="stat-num">{{ pair_count }}</div>
+        <div class="stat-label">USD Pairs Discovered</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ featured_rows | length }}</div>
+        <div class="stat-label">Featured Markets</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num {{ 'stat-ok' if (featured_rows | selectattr('enabled') | list | length) > 0 else 'stat-warn' }}">
+            {{ featured_rows | selectattr('enabled') | list | length }} enabled
+        </div>
+        <div class="stat-label">Shown on Dashboard</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num {{ 'stat-warn' if is_using_fallback else 'stat-ok' }}">
+            {{ '⚠ Fallback' if is_using_fallback else '✓ Live' }}
+        </div>
+        <div class="stat-label">Data Source</div>
+    </div>
+</div>
+
+{# ── Featured Markets Manager ──────────────────────────────────────────────── #}
+<div class="card" style="margin-top:1.5rem">
+    <h2>⭐ Featured Markets</h2>
+    <p class="text-muted">
+        These assets appear on the dashboard price strip and the chart navigation sidebar.
+        Drag order matters — enabled assets appear first.
+        Disabled entries are hidden from user views but preserved for reference.
+    </p>
+
+    {% if featured_rows %}
+    <div style="overflow-x:auto;margin-bottom:1.5rem">
+    <table>
+        <thead>
+            <tr>
+                <th style="width:2rem">Order</th>
+                <th>Symbol</th>
+                <th>Display Name</th>
+                <th>Kraken Pair</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in featured_rows %}
+            <tr style="{{ 'opacity:.5' if not row.enabled else '' }}">
+                <td style="text-align:center">
+                    <div style="display:flex;flex-direction:column;gap:.15rem;align-items:center">
+                        <form method="post" action="/admin/assets/featured/{{ row.asset_symbol | urlencode }}/move-up">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary"
+                                    style="padding:.1rem .35rem;font-size:.75rem;line-height:1"
+                                    title="Move up">▲</button>
+                        </form>
+                        <span style="font-size:.8rem;color:var(--text-muted)">{{ loop.index }}</span>
+                        <form method="post" action="/admin/assets/featured/{{ row.asset_symbol | urlencode }}/move-down">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary"
+                                    style="padding:.1rem .35rem;font-size:.75rem;line-height:1"
+                                    title="Move down">▼</button>
+                        </form>
+                    </div>
+                </td>
+                <td><strong>{{ row.asset_symbol }}</strong></td>
+                <td>
+                    <form method="post"
+                          action="/admin/assets/featured/{{ row.asset_symbol | urlencode }}/rename"
+                          style="display:flex;gap:.4rem;align-items:center">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="text" name="display_name"
+                               value="{{ row.display_name or '' }}"
+                               placeholder="e.g. Bitcoin"
+                               style="width:130px">
+                        <button type="submit" class="btn-secondary"
+                                style="padding:.25rem .5rem;font-size:.8rem">Save</button>
+                    </form>
+                </td>
+                <td><code>{{ row.kraken_pair }}</code></td>
+                <td>
+                    {% if row.enabled %}
+                        <span class="badge badge-ok">Enabled</span>
+                    {% else %}
+                        <span class="badge badge-warn">Disabled</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                        <form method="post" action="/admin/assets/featured/{{ row.asset_symbol | urlencode }}/toggle">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary"
+                                    style="padding:.25rem .5rem;font-size:.8rem">
+                                {{ '⏸ Disable' if row.enabled else '▶ Enable' }}
+                            </button>
+                        </form>
+                        <form method="post"
+                              action="/admin/assets/featured/{{ row.asset_symbol | urlencode }}/remove"
+                              onsubmit="return confirm('Remove {{ row.asset_symbol }} from featured markets?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-danger"
+                                    style="padding:.25rem .5rem;font-size:.8rem">✕ Remove</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="margin-bottom:1rem">
+        No featured markets configured. Add one below or
+        <a href="/admin/assets">refresh Kraken pairs</a> first.
+    </p>
+    {% endif %}
+
+    {# Add new featured asset #}
+    <div style="border-top:1px solid var(--border);padding-top:1rem">
+        <h3 style="margin:0 0 .75rem">Add Featured Market</h3>
+        <form method="post" action="/admin/assets/featured/add"
+              style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label style="display:block;font-size:.85rem;margin-bottom:.25rem">Asset (USD pair)</label>
+                <select name="asset_symbol" style="min-width:160px" required>
+                    <option value="">— choose —</option>
+                    {% for pair in pairs | sort(attribute='symbol') %}
+                        {% if pair.symbol not in featured_symbols %}
+                        <option value="{{ pair.symbol }}">{{ pair.symbol }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="display:block;font-size:.85rem;margin-bottom:.25rem">Display Name (optional)</label>
+                <input type="text" name="display_name" placeholder="e.g. Bitcoin" style="width:140px">
+            </div>
+            <button type="submit" class="btn-primary">⭐ Add Featured</button>
+        </form>
+        {% if not pairs %}
+        <p class="text-muted" style="margin-top:.5rem">
+            No pairs loaded — <a href="#" onclick="document.querySelector('form[action=\'/admin/assets/refresh\']').submit()">refresh</a> to load from Kraken.
+        </p>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Kraken USD Pairs Cache ─────────────────────────────────────────────────── #}
+<div class="card" style="margin-top:1.5rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+        <div>
+            <h2 style="margin:0">Kraken USD Pairs Cache</h2>
+            <p class="text-muted" style="margin:.25rem 0 0">
+                Last refreshed:
+                {% if last_refresh %}
+                    {{ last_refresh.strftime('%Y-%m-%d %H:%M:%S UTC') }}
+                {% else %}
+                    Never
+                {% endif %}
+                · Auto-refreshes every 6 hours.
+            </p>
+        </div>
+        <form method="post" action="/admin/assets/refresh">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn-primary">🔄 Refresh Now</button>
+        </form>
+    </div>
+
+    <div style="margin-bottom:1rem">
+        <input type="text" id="pair-filter" placeholder="Filter pairs…"
+               style="width:100%;max-width:300px" oninput="filterPairs(this.value)">
+    </div>
+
+    <div style="overflow-x:auto">
+    <table id="pairs-table">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Base Asset</th>
+                <th>Ticker Query Name</th>
+                <th>Result Key</th>
+                <th>WS Name</th>
+                <th>Featured</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for pair in pairs %}
+            <tr>
+                <td><strong>{{ pair.symbol }}</strong></td>
+                <td>{{ pair.base }}</td>
+                <td><code>{{ pair.query_name }}</code></td>
+                <td><code>{{ pair.result_key }}</code></td>
+                <td><code>{{ pair.ws_name }}</code></td>
+                <td>
+                    {% if pair.symbol in featured_symbols %}
+                        ⭐
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<script>
+function filterPairs(val) {
+    val = val.toLowerCase();
+    document.querySelectorAll('#pairs-table tbody tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(val) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

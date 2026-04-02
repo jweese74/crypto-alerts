@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Event Log{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+  <h2>📋 Event Log</h2>
+  <p class="text-muted">Human-readable history of system and alert events.</p>
+
+  {# ── Filters ──────────────────────────────────────────────────────────── #}
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-md-2">
+      <select name="asset" class="form-select form-select-sm">
+        <option value="">All assets</option>
+        {% for a in known_assets %}
+          <option value="{{ a }}" {% if filters.asset == a %}selected{% endif %}>{{ a }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <select name="event_type" class="form-select form-select-sm">
+        {% for val, label in event_types %}
+          <option value="{{ val }}" {% if filters.event_type == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="severity" class="form-select form-select-sm">
+        <option value="">All severities</option>
+        <option value="info"     {% if filters.severity == 'info'     %}selected{% endif %}>ℹ Info</option>
+        <option value="warning"  {% if filters.severity == 'warning'  %}selected{% endif %}>⚠ Warning</option>
+        <option value="critical" {% if filters.severity == 'critical' %}selected{% endif %}>🔴 Critical</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <select name="range" class="form-select form-select-sm">
+        {% for val, label in range_options %}
+          <option value="{{ val }}" {% if filters.range == val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1">
+      <button type="submit" class="btn btn-sm btn-primary w-100">Filter</button>
+    </div>
+    <div class="col-md-1">
+      <a href="/events/" class="btn btn-sm btn-outline-secondary w-100">Reset</a>
+    </div>
+  </form>
+
+  {# ── Count + pagination info ───────────────────────────────────────────── #}
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <small class="text-muted">
+      Showing {{ (page - 1) * page_size + 1 }}–{{ [(page - 1) * page_size + events|length, total]|min }}
+      of {{ total }} event{% if total != 1 %}s{% endif %}
+    </small>
+    {% if total_pages > 1 %}
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if page == 1 %}disabled{% endif %}">
+          <a class="page-link" href="?asset={{ filters.asset }}&event_type={{ filters.event_type }}&severity={{ filters.severity }}&range={{ filters.range }}&page={{ page - 1 }}">‹</a>
+        </li>
+        {% for p in range(1, total_pages + 1) %}
+          {% if p == page or (p >= page - 2 and p <= page + 2) or p == 1 or p == total_pages %}
+            <li class="page-item {% if p == page %}active{% endif %}">
+              <a class="page-link" href="?asset={{ filters.asset }}&event_type={{ filters.event_type }}&severity={{ filters.severity }}&range={{ filters.range }}&page={{ p }}">{{ p }}</a>
+            </li>
+          {% elif p == page - 3 or p == page + 3 %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+          {% endif %}
+        {% endfor %}
+        <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+          <a class="page-link" href="?asset={{ filters.asset }}&event_type={{ filters.event_type }}&severity={{ filters.severity }}&range={{ filters.range }}&page={{ page + 1 }}">›</a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+  </div>
+
+  {# ── Event feed ───────────────────────────────────────────────────────── #}
+  {% if not events %}
+    <div class="alert alert-secondary">No events match your filters.</div>
+  {% else %}
+  <div class="list-group">
+    {% for event in events %}
+      {% set sev_class = 'text-success' if event.severity == 'info' else ('text-warning' if event.severity == 'warning' else 'text-danger') %}
+      {% set sev_icon = 'ℹ️' if event.severity == 'info' else ('⚠️' if event.severity == 'warning' else '🔴') %}
+      <div class="list-group-item list-group-item-action py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <span class="{{ sev_class }} me-1">{{ sev_icon }}</span>
+            <span class="fw-semibold">{{ event.description }}</span>
+          </div>
+          <div class="text-end ms-3" style="white-space:nowrap; min-width:160px;">
+            {% if event.asset_symbol %}
+              <span class="badge bg-secondary me-1">{{ event.asset_symbol }}</span>
+            {% endif %}
+            <small class="text-muted">{{ event.occurred_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</small>
+          </div>
+        </div>
+        <div class="mt-1">
+          <span class="badge bg-light text-dark border">{{ event.event_type.replace('_', ' ') }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ── Bottom pagination ─────────────────────────────────────────────────── #}
+  {% if total_pages > 1 %}
+  <nav class="mt-3">
+    <ul class="pagination pagination-sm justify-content-center">
+      <li class="page-item {% if page == 1 %}disabled{% endif %}">
+        <a class="page-link" href="?asset={{ filters.asset }}&event_type={{ filters.event_type }}&severity={{ filters.severity }}&range={{ filters.range }}&page={{ page - 1 }}">‹ Prev</a>
+      </li>
+      {% for p in range(1, total_pages + 1) %}
+        {% if p == page or (p >= page - 2 and p <= page + 2) or p == 1 or p == total_pages %}
+          <li class="page-item {% if p == page %}active{% endif %}">
+            <a class="page-link" href="?asset={{ filters.asset }}&event_type={{ filters.event_type }}&severity={{ filters.severity }}&range={{ filters.range }}&page={{ p }}">{{ p }}</a>
+          </li>
+        {% elif p == page - 3 or p == page + 3 %}
+          <li class="page-item disabled"><span class="page-link">…</span></li>
+        {% endif %}
+      {% endfor %}
+      <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+        <a class="page-link" href="?asset={{ filters.asset }}&event_type={{ filters.event_type }}&severity={{ filters.severity }}&range={{ filters.range }}&page={{ page + 1 }}">Next ›</a>
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}403 Forbidden{% endblock %}
+{% block content %}
+<div class="auth-card">
+    <h1>403 — Access Denied</h1>
+    <p>{{ detail | default("You don't have permission to view this page.") }}</p>
+    <a href="/dashboard" class="btn-primary">Go to Dashboard</a>
+</div>
+{% endblock %}

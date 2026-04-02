@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Settings</h1>
+</div>
+
+<div class="two-col">
+    <div>
+        <div class="card">
+            <h2>👤 Account</h2>
+            <div class="kv-grid">
+                <span class="kv-label">Username</span><strong>{{ user.username }}</strong>
+                <span class="kv-label">Email</span><span>{{ user.email }}</span>
+                <span class="kv-label">Role</span>
+                <span class="badge {{ 'badge-admin' if user.is_admin else 'badge-success' }}">{{ user.role.value }}</span>
+            </div>
+        </div>
+
+        {% if user.is_admin %}
+        <div class="card" style="margin-top:1.5rem">
+            <h2>⏱ Polling Interval</h2>
+            <p class="text-muted" style="margin-bottom:1rem;font-size:.88rem">
+                How often (in seconds) the scheduler polls Kraken prices. Minimum: 10s.
+            </p>
+            <form method="post" action="/settings/poll-interval">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-row">
+                    <label>Interval (seconds)
+                        <input type="number" name="poll_interval" min="10" max="3600"
+                               value="{{ poll_interval }}">
+                    </label>
+                    <div style="align-self:flex-end">
+                        <button type="submit" class="btn-primary">Save</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <div>
+        <div class="card">
+            <h2>🔔 Notifications</h2>
+            <p>Alert emails are sent to your account email address.</p>
+            <p class="text-muted" style="font-size:.85rem">{{ user.email }}</p>
+        </div>
+
+        {% if user.is_admin %}
+        <div class="card card-admin" style="margin-top:1.5rem">
+            <h2>📧 SMTP Settings</h2>
+            <p>Configure the outbound email server for alert delivery.</p>
+            <a href="/settings/smtp" class="btn-admin" style="display:inline-block;margin-top:.5rem">Configure SMTP →</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

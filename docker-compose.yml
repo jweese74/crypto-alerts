@@ -1,0 +1,77 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# Crypto Alert System — Docker Compose
+#
+# Quick start:
+#   cp .env.example .env   # fill in POSTGRES_PASSWORD, SECRET_KEY, FIRST_ADMIN_*
+#   docker compose up -d
+#
+# To use the pre-built image instead of building locally, replace:
+#   build: .
+# with:
+#   image: jweese74/crypto-alerts:latest
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-crypto_alerts}
+      POSTGRES_USER:     ${POSTGRES_USER:-crypto_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crypto_user} -d ${POSTGRES_DB:-crypto_alerts}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    # image: jweese74/crypto-alerts:latest   # ← uncomment to use pre-built image
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      POSTGRES_HOST:     db
+      POSTGRES_PORT:     5432
+      POSTGRES_DB:       ${POSTGRES_DB:-crypto_alerts}
+      POSTGRES_USER:     ${POSTGRES_USER:-crypto_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+      SECRET_KEY:        ${SECRET_KEY:?Set SECRET_KEY in .env}
+      DEBUG:             ${DEBUG:-false}
+
+      REGISTRATION_ENABLED:  ${REGISTRATION_ENABLED:-true}
+      FIRST_ADMIN_EMAIL:     ${FIRST_ADMIN_EMAIL:-}
+      FIRST_ADMIN_PASSWORD:  ${FIRST_ADMIN_PASSWORD:-}
+      FIRST_ADMIN_USERNAME:  ${FIRST_ADMIN_USERNAME:-admin}
+
+      SMTP_HOST:     ${SMTP_HOST:-localhost}
+      SMTP_PORT:     ${SMTP_PORT:-587}
+      SMTP_MODE:     ${SMTP_MODE:-starttls}
+      SMTP_USER:     ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM:     ${SMTP_FROM:-alerts@example.com}
+
+      KRAKEN_POLL_INTERVAL_SECONDS: ${KRAKEN_POLL_INTERVAL_SECONDS:-60}
+      ALERT_COOLDOWN_MINUTES:       ${ALERT_COOLDOWN_MINUTES:-60}
+
+      LOGIN_MAX_ATTEMPTS:            ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_WINDOW_MINUTES:          ${LOGIN_WINDOW_MINUTES:-15}
+      LOGIN_LOCKOUT_MINUTES:         ${LOGIN_LOCKOUT_MINUTES:-30}
+      HTTPS_ONLY:                    ${HTTPS_ONLY:-false}
+      SESSION_IDLE_TIMEOUT_HOURS:    ${SESSION_IDLE_TIMEOUT_HOURS:-8}
+      SESSION_ABSOLUTE_TIMEOUT_HOURS: ${SESSION_ABSOLUTE_TIMEOUT_HOURS:-168}
+
+      ALLOW_CUSTOM_PAIRS:       ${ALLOW_CUSTOM_PAIRS:-false}
+      KRAKEN_ASSET_CACHE_HOURS: ${KRAKEN_ASSET_CACHE_HOURS:-6}
+
+volumes:
+  postgres_data:

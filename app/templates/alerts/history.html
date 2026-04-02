@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Alert History{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Alert History</h1>
+    <a href="/alerts/" class="btn-secondary">← My Alerts</a>
+</div>
+
+{% if history %}
+<table>
+    <thead>
+        <tr>
+            <th>Time (UTC)</th>
+            <th>Pair</th>
+            <th>Triggered At</th>
+            <th>Threshold</th>
+            <th>Severity</th>
+            <th>Delivery</th>
+            <th>Message</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for h in history %}
+        <tr>
+            <td class="text-muted">{{ h.triggered_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+            <td><strong>{{ h.trading_pair }}</strong></td>
+            <td>${{ "{:,.2f}".format(h.triggered_price) }}</td>
+            <td>${{ "{:,.2f}".format(h.threshold_value) }}</td>
+            <td>
+                <span class="severity-badge severity-{{ h.severity }}">
+                    {{ h.severity | upper }}
+                </span>
+            </td>
+            <td>
+                <span class="badge {{ 'badge-success' if h.delivered else 'badge-muted' }}">
+                    {{ '✓ ' + h.delivery_channel if h.delivered else '○ ' + h.delivery_channel }}
+                </span>
+            </td>
+            <td class="text-muted history-msg">{{ h.message }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">🕑</div>
+    <h2>No alert history yet</h2>
+    <p>Alerts that trigger will appear here.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Admin — Security{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🔒 Admin — Security</h1>
+</div>
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab admin-tab-active">Security</a>
+</div>
+
+{% for msg in flash_messages %}
+<div class="flash-message flash-{{ msg.category }}">{{ msg.message }}</div>
+{% endfor %}
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; margin-top:1rem;">
+
+  {# ── Active lockouts ──────────────────────────────────────────────────── #}
+  <div class="card">
+    <h3>🔐 Active Lockouts</h3>
+    {% if tracker_stats.locked_keys == 0 %}
+      <p class="text-muted">No active lockouts.</p>
+    {% else %}
+      <table class="data-table" style="font-size:.9rem;">
+        <thead><tr><th>Identifier (IP or login)</th><th>Expires in</th><th>Action</th></tr></thead>
+        <tbody>
+        {% for entry in tracker_stats.locked %}
+          <tr>
+            <td><code>{{ entry.key }}</code></td>
+            <td>{{ (entry.seconds_remaining // 60) }}m {{ (entry.seconds_remaining % 60) }}s</td>
+            <td>
+              <form method="post" action="/admin/security/unlock" style="display:inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="identifier" value="{{ entry.key }}">
+                <button type="submit" class="btn-small btn-danger">Unlock</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+    <p style="margin-top:.8rem; color:var(--muted);">
+      Tracking <strong>{{ tracker_stats.tracked_keys }}</strong> identifier(s) total.
+    </p>
+    <details style="margin-top:.5rem;">
+      <summary style="cursor:pointer; color:var(--muted);">Manual unlock by identifier</summary>
+      <form method="post" action="/admin/security/unlock" style="margin-top:.5rem; display:flex; gap:.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="text" name="identifier" placeholder="IP or login" class="form-input" style="flex:1;">
+        <button type="submit" class="btn-primary">Unlock</button>
+      </form>
+    </details>
+  </div>
+
+  {# ── Rate limit config (read-only from env) ───────────────────────────── #}
+  <div class="card">
+    <h3>⚙️ Rate Limit Settings</h3>
+    <p class="text-muted" style="font-size:.85rem;">Configure via environment variables and restart.</p>
+    <table class="data-table" style="font-size:.9rem;">
+      <tbody>
+        <tr><td>Max attempts before lockout</td><td><strong>{{ cfg.max_attempts }}</strong></td></tr>
+        <tr><td>Attempt window</td><td><strong>{{ cfg.window_minutes }} min</strong></td></tr>
+        <tr><td>Lockout duration</td><td><strong>{{ cfg.lockout_minutes }} min</strong></td></tr>
+        <tr><td>Session idle timeout</td><td><strong>{{ cfg.session_idle_hours }} hours</strong></td></tr>
+        <tr><td>Session absolute timeout</td><td><strong>{{ cfg.session_abs_hours }} hours</strong></td></tr>
+        <tr><td>HTTPS-only cookies</td>
+            <td><strong>{% if cfg.https_only %}<span style="color:green">Yes</span>{% else %}<span style="color:var(--muted)">No</span>{% endif %}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top:.8rem; color:var(--muted); font-size:.85rem;">
+      Env vars: <code>LOGIN_MAX_ATTEMPTS</code>, <code>LOGIN_WINDOW_MINUTES</code>,
+      <code>LOGIN_LOCKOUT_MINUTES</code>, <code>SESSION_IDLE_TIMEOUT_HOURS</code>,
+      <code>SESSION_ABSOLUTE_TIMEOUT_HOURS</code>, <code>HTTPS_ONLY</code>
+    </p>
+  </div>
+
+  {# ── IP Whitelist ─────────────────────────────────────────────────────── #}
+  <div class="card">
+    <h3>🌐 IP Whitelist</h3>
+    <p class="text-muted" style="font-size:.85rem;">
+      Leave empty to allow all IPs. Enter comma-separated IPs or CIDR ranges.
+      <strong>Warning:</strong> if you lock yourself out, restart the container to clear.
+    </p>
+    <form method="post" action="/admin/security/ip-whitelist">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <textarea name="ip_whitelist" class="form-input" rows="4"
+                placeholder="e.g. 192.168.1.0/24, 10.0.0.1"
+                style="width:100%; font-family:monospace;">{{ ip_whitelist_raw }}</textarea>
+      <div style="margin-top:.5rem;">
+        <button type="submit" class="btn-primary">Save Whitelist</button>
+        {% if ip_whitelist_raw %}
+          <button type="submit" name="ip_whitelist" value="" class="btn-secondary" style="margin-left:.5rem;"
+                  onclick="return confirm('Remove all IP restrictions?')">Clear (allow all)</button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  {# ── Recent auth events ───────────────────────────────────────────────── #}
+  <div class="card">
+    <h3>📋 Recent Auth Events</h3>
+    {% if not security_events %}
+      <p class="text-muted">No recent auth events.</p>
+    {% else %}
+      <div style="max-height:320px; overflow-y:auto;">
+        {% for evt in security_events %}
+          {% set sev_color = '#d63031' if evt.severity == 'critical' else ('#fdcb6e' if evt.severity == 'warning' else '#00b894') %}
+          <div style="border-left:3px solid {{ sev_color }}; padding:.4rem .6rem; margin-bottom:.4rem; background:var(--card-bg); font-size:.85rem;">
+            <div>{{ evt.description }}</div>
+            <div style="color:var(--muted); font-size:.8rem;">
+              {{ evt.occurred_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC
+              &nbsp;·&nbsp; <code>{{ evt.event_type }}</code>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <p style="margin-top:.5rem;">
+        <a href="/events/?event_type=auth_failure&range=7d">View all auth failures →</a>
+      </p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

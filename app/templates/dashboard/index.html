@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Welcome back, {{ user.username }}!</h1>
+    {% if last_poll_time %}
+    <p class="subtitle">Last polled: {{ last_poll_time.strftime('%H:%M:%S UTC') }} · Cycle #{{ scheduler_cycles }}</p>
+    {% else %}
+    <p class="subtitle">Waiting for first poll cycle…</p>
+    {% endif %}
+    <div style="margin-top:.75rem">
+        <a href="/ticker" class="btn-primary" style="display:inline-flex;align-items:center;gap:.35rem">
+            📡 Open Ticker View
+        </a>
+    </div>
+</div>
+
+<!-- Market state banner -->
+<div class="market-state-banner market-state-{{ market_state.state }}"
+     title="{{ market_state.reasons | join(' | ') }}">
+    <span class="ms-icon">{{ market_state.icon }}</span>
+    <span class="ms-body">
+        <strong>Market: {{ market_state.state | upper }}</strong>
+        <span class="ms-meta">
+            Score {{ market_state.score }}
+            {% if market_state.duration_minutes > 0 %}
+            · for {{ market_state.duration_minutes }} min
+            {% endif %}
+            {% if market_state.reasons %}
+            · {{ market_state.reasons[0] }}
+            {% endif %}
+        </span>
+    </span>
+    <a href="/api/market-state" class="ms-detail-link" target="_blank" rel="noopener">details ↗</a>
+</div>
+
+<!-- Price ticker -->
+<div class="price-strip">
+    {% for item in display_pairs %}
+    <a href="/assets/{{ item.url }}/chart" class="price-card price-card-link">
+        <span class="price-icon">{{ item.icon }}</span>
+        <span class="price-pair">{{ item.symbol }}</span>
+        {% if item.price %}
+        <span class="price-value">${{ "{:,.2f}".format(item.price) }}</span>
+        {% else %}
+        <span class="price-value price-stale">—</span>
+        {% endif %}
+        <span class="price-chart-hint">📈 View Chart</span>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Stats row -->
+<div class="stat-strip">
+    <div class="stat-card">
+        <div class="stat-num">{{ rule_count }}</div>
+        <div class="stat-label">Your Rules</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ active_rule_count }}</div>
+        <div class="stat-label">Active System-wide</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ scheduler_cycles }}</div>
+        <div class="stat-label">Polls Completed</div>
+    </div>
+    <div class="stat-card {{ 'stat-ok' if last_poll_time else 'stat-warn' }}">
+        <div class="stat-num">{{ '✓' if last_poll_time else '…' }}</div>
+        <div class="stat-label">Scheduler Status</div>
+    </div>
+</div>
+
+<!-- Quick actions -->
+<div class="section-header">
+    <h2>Quick Actions</h2>
+</div>
+<div class="card-grid">
+    <div class="card">
+        <div class="card-icon">＋</div>
+        <h2>New Alert</h2>
+        <p>Create a price alert for any Kraken USD pair (BTC, ETH, SOL, ADA and more).</p>
+        <a href="/alerts/create" class="btn-primary">Create Alert</a>
+    </div>
+    <div class="card">
+        <div class="card-icon">📋</div>
+        <h2>My Alerts</h2>
+        <p>View, edit, enable or disable your alert rules.</p>
+        <a href="/alerts/" class="btn-secondary">Manage Alerts</a>
+    </div>
+    <div class="card">
+        <div class="card-icon">🕑</div>
+        <h2>Alert History</h2>
+        <p>See all past alerts that fired for your account.</p>
+        <a href="/alerts/history" class="btn-secondary">View History</a>
+    </div>
+    {% if user.is_admin %}
+    <div class="card card-admin">
+        <div class="card-icon">🛡</div>
+        <h2>Admin Panel</h2>
+        <p>Manage users, view all alerts, configure SMTP.</p>
+        <a href="/admin/" class="btn-admin">Open Admin</a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Recent alert history -->
+{% if recent_history %}
+<div class="section-header" style="margin-top:2rem">
+    <h2>Recent Alerts</h2>
+    <a href="/alerts/history" class="btn-link-small">View all →</a>
+</div>
+<table>
+    <thead>
+        <tr>
+            <th>Pair</th>
+            <th>Triggered At</th>
+            <th>Price</th>
+            <th>Threshold</th>
+            <th>Severity</th>
+            <th>Delivered</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for h in recent_history %}
+        <tr>
+            <td><strong>{{ h.trading_pair }}</strong></td>
+            <td class="text-muted">{{ h.triggered_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+            <td>${{ "{:,.2f}".format(h.triggered_price) }}</td>
+            <td>${{ "{:,.2f}".format(h.threshold_value) }}</td>
+            <td>
+                <span class="severity-badge severity-{{ h.severity }}">
+                    {{ h.severity | upper }}
+                </span>
+            </td>
+            <td>
+                <span class="badge {{ 'badge-success' if h.delivered else 'badge-muted' }}">
+                    {{ '✓ sent' if h.delivered else 'logged' }}
+                </span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

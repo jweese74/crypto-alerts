@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}New Alert{% endblock %}
+{% block content %}
+<h1>Create Alert Rule</h1>
+<form method="post" action="/alerts/">
+    <label>Trading Pair
+        <input type="text" name="trading_pair" placeholder="XBT/USD" required>
+    </label>
+    <label>Condition
+        <select name="condition">
+            <option value="above">Price goes above</option>
+            <option value="below">Price goes below</option>
+            <option value="percent_change_up">% change up</option>
+            <option value="percent_change_down">% change down</option>
+        </select>
+    </label>
+    <label>Threshold
+        <input type="number" step="any" name="threshold" required>
+    </label>
+    <button type="submit">Create</button>
+</form>
+{% endblock %}

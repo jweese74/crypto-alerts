@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🛡 Admin Dashboard</h1>
+</div>
+
+<!-- Admin nav tabs -->
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab admin-tab-active">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab">Security</a>
+</div>
+
+<!-- Stats row -->
+<div class="stat-strip">
+    <div class="stat-card">
+        <div class="stat-num">{{ users | length }}</div>
+        <div class="stat-label">Total Users</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ total_rules }}</div>
+        <div class="stat-label">Alert Rules</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ active_rules }}</div>
+        <div class="stat-label">Active Rules</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ total_history }}</div>
+        <div class="stat-label">Alerts Fired</div>
+    </div>
+</div>
+
+<!-- Scheduler status -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>📡 Scheduler Status</h2>
+    <div class="kv-grid">
+        <span class="kv-label">Status</span>
+        <span class="{{ 'text-success' if last_poll_time else 'text-warning' }}">
+            {{ '● Running' if last_poll_time else '○ Waiting for first cycle' }}
+        </span>
+        <span class="kv-label">Cycles completed</span>
+        <span>{{ scheduler_cycles }}</span>
+        <span class="kv-label">Last poll</span>
+        <span>{{ last_poll_time.strftime('%Y-%m-%d %H:%M:%S UTC') if last_poll_time else '—' }}</span>
+    </div>
+</div>
+
+<!-- Live prices -->
+{% if prices %}
+<div class="card" style="margin-top:1.5rem">
+    <h2>💹 Live Prices</h2>
+    <div class="price-strip price-strip-sm">
+        {% for pair, price in prices.items() %}
+        <div class="price-card">
+            <span class="price-pair">{{ pair }}</span>
+            <span class="price-value">${{ "{:,.2f}".format(price) }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Price history stats -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>📦 Price History Storage</h2>
+    <div id="history-stats" class="kv-grid">
+        <span class="kv-label">Loading…</span><span></span>
+    </div>
+    <a href="/api/assets/stats" id="load-stats" class="btn-link-small" style="margin-top:.8rem;display:inline-block">
+        Load storage stats
+    </a>
+</div>
+
+<!-- Recent alert history -->
+{% if recent_history %}
+<div class="card" style="margin-top:1.5rem">
+    <h2>🕑 Recent Alert Activity</h2>
+    <table>
+        <thead><tr><th>Time</th><th>Pair</th><th>Price</th><th>Threshold</th><th>Delivered</th></tr></thead>
+        <tbody>
+            {% for h in recent_history %}
+            <tr>
+                <td class="text-muted">{{ h.triggered_at.strftime('%m-%d %H:%M') }}</td>
+                <td><strong>{{ h.trading_pair }}</strong></td>
+                <td>${{ "{:,.2f}".format(h.triggered_price) }}</td>
+                <td>${{ "{:,.2f}".format(h.threshold_value) }}</td>
+                <td><span class="badge {{ 'badge-success' if h.delivered else 'badge-muted' }}">{{ '✓' if h.delivered else '○' }}</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <a href="/admin/alerts" class="btn-link-small" style="display:block;margin-top:.8rem">View all alerts →</a>
+</div>
+{% endif %}
+
+{% block extra_js %}
+<script>
+document.getElementById('load-stats')?.addEventListener('click', async function(e) {
+    e.preventDefault();
+    try {
+        const resp = await fetch('/api/assets/stats');
+        if (!resp.ok) throw new Error('Failed');
+        const data = await resp.json();
+        const grid = document.getElementById('history-stats');
+        let html = `
+            <span class="kv-label">Total rows</span><span>${data.total_rows.toLocaleString()}</span>
+            <span class="kv-label">Oldest</span><span>${data.oldest ? data.oldest.replace('T', ' ').slice(0,16) + ' UTC' : '—'}</span>
+            <span class="kv-label">Newest</span><span>${data.newest ? data.newest.replace('T', ' ').slice(0,16) + ' UTC' : '—'}</span>
+        `;
+        for (const [sym, count] of Object.entries(data.per_symbol || {})) {
+            html += `<span class="kv-label">${sym}</span><span>${count.toLocaleString()} rows</span>`;
+        }
+        grid.innerHTML = html;
+        e.target.style.display = 'none';
+    } catch(err) {
+        document.getElementById('history-stats').innerHTML = '<span class="kv-label">Error</span><span>Could not load stats</span>';
+    }
+});
+</script>
+{% endblock %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<div class="auth-card">
+    <h1>Sign In</h1>
+
+    {% for msg in flash_messages %}
+    <div class="flash-message flash-{{ msg.category }}">{{ msg.message }}</div>
+    {% endfor %}
+
+    <form method="post" action="/auth/login">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="next" value="{{ next | default('/dashboard') }}">
+
+        <label>
+            Email or Username
+            <input type="text" name="login" value="{{ login_value | default('') }}"
+                   autocomplete="username" required autofocus
+                   {% if locked %}disabled{% endif %}>
+        </label>
+
+        <label>
+            Password
+            <input type="password" name="password" autocomplete="current-password" required
+                   {% if locked %}disabled{% endif %}>
+        </label>
+
+        <button type="submit" class="btn-primary btn-full" {% if locked %}disabled{% endif %}>
+            {% if locked %}Locked — Try later{% else %}Sign In{% endif %}
+        </button>
+    </form>
+
+    {% if registration_enabled %}
+    <p class="auth-alt">No account? <a href="/auth/register">Create one</a></p>
+    {% endif %}
+</div>
+{% endblock %}

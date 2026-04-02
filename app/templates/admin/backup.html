@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Admin — Backup & Export{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🛡 Admin — Backup &amp; Export</h1>
+</div>
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab admin-tab-active">Backup</a>
+</div>
+
+{% for msg in flash_messages %}
+<div class="flash-message flash-{{ msg.category }}">{{ msg.message }}</div>
+{% endfor %}
+
+<!-- What's in the database ───────────────────────────────────────── -->
+<div class="stat-strip" style="margin-top:1.5rem">
+    <div class="stat-card">
+        <div class="stat-num">{{ rule_count }}</div>
+        <div class="stat-label">Alert Rules</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ history_count }}</div>
+        <div class="stat-label">Alert History</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ user_count }}</div>
+        <div class="stat-label">Users</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ setting_count }}</div>
+        <div class="stat-label">Settings</div>
+    </div>
+</div>
+
+<!-- Export ────────────────────────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>📤 Export / Backup</h2>
+    <p class="text-muted" style="margin-bottom:1rem">
+        Downloads a <strong>JSON</strong> file containing your data.
+        Sensitive values (SMTP password, bot tokens, webhook URLs) are
+        <strong>always redacted</strong> and will never appear in exports.
+    </p>
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem">
+
+        <!-- Quick backup -->
+        <div class="card" style="flex:1;min-width:220px;background:var(--bg-secondary,#f8f9fa)">
+            <h3 style="margin:0 0 .5rem">🔒 Quick Backup</h3>
+            <p class="text-muted" style="font-size:.9rem;margin-bottom:.75rem">
+                Settings + alert rules only.<br>Safe for regular snapshots.
+            </p>
+            <a href="/admin/backup/export" class="btn-primary" style="display:inline-block">
+                ⬇ Download Backup
+            </a>
+        </div>
+
+        <!-- Full export with options -->
+        <div class="card" style="flex:2;min-width:280px;background:var(--bg-secondary,#f8f9fa)">
+            <h3 style="margin:0 0 .5rem">📋 Custom Export</h3>
+            <p class="text-muted" style="font-size:.9rem;margin-bottom:.75rem">
+                Choose what to include.
+            </p>
+            <form id="export-form" style="display:flex;flex-direction:column;gap:.5rem">
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="checkbox" id="exp_users" checked disabled>
+                    Settings &amp; Alert Rules
+                    <span class="text-muted" style="font-size:.8rem">(always included)</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="checkbox" id="exp_history">
+                    Alert History
+                    <span class="text-muted" style="font-size:.8rem">({{ history_count }} rows)</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="checkbox" id="exp_include_users">
+                    User Accounts
+                    <span class="text-muted" style="font-size:.8rem">(no passwords exported)</span>
+                </label>
+                <button type="button" class="btn-secondary" style="margin-top:.5rem;width:fit-content"
+                        onclick="downloadCustom()">
+                    ⬇ Download Custom Export
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="flash-message flash-info" style="margin:0">
+        ℹ️ Exported files can be used to migrate to another instance or restore after data loss.
+        Keep backups in a secure location.
+    </div>
+</div>
+
+<!-- Import ────────────────────────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>📥 Import / Restore</h2>
+    <p class="text-muted" style="margin-bottom:.5rem">
+        Upload a previously exported JSON file.
+        A <strong>safety snapshot</strong> of the current data is automatically
+        taken before any writes — you can download it immediately after import.
+    </p>
+
+    <details style="margin-bottom:1rem">
+        <summary style="cursor:pointer;color:var(--link-color,#0d6efd)">ℹ️ Import behaviour details</summary>
+        <ul style="margin:.5rem 0 0 1.25rem;font-size:.9rem">
+            <li>Existing alert rules are <strong>skipped</strong> unless "overwrite" is checked.</li>
+            <li>Settings are merged — only keys present in the file are updated.</li>
+            <li>REDACTED values in the file are <strong>never written</strong> to the database.</li>
+            <li>Alert history rows with duplicate IDs are skipped.</li>
+            <li>Imported users get a locked placeholder password and must reset via Admin → Users.</li>
+        </ul>
+    </details>
+
+    <form method="post" action="/admin/backup/import"
+          enctype="multipart/form-data"
+          onsubmit="return confirmImport()">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <div style="margin-bottom:1rem">
+            <label for="backup_file"><strong>Backup file (.json)</strong></label><br>
+            <input type="file" id="backup_file" name="backup_file"
+                   accept=".json,application/json"
+                   required style="margin-top:.35rem">
+        </div>
+
+        <fieldset style="border:1px solid var(--border-color,#dee2e6);border-radius:6px;padding:1rem;margin-bottom:1rem">
+            <legend style="padding:0 .5rem;font-weight:600">What to import</legend>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem">
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="hidden" name="import_settings" value="false">
+                    <input type="checkbox" name="import_settings" value="true">
+                    System Settings
+                </label>
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="hidden" name="import_rules" value="false">
+                    <input type="checkbox" name="import_rules" value="true" checked>
+                    Alert Rules
+                </label>
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="hidden" name="import_history" value="false">
+                    <input type="checkbox" name="import_history" value="true">
+                    Alert History
+                </label>
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal">
+                    <input type="hidden" name="import_users" value="false">
+                    <input type="checkbox" name="import_users" value="true">
+                    User Accounts
+                </label>
+            </div>
+
+            <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border-color,#dee2e6)">
+                <label style="display:flex;align-items:center;gap:.5rem;font-weight:normal;color:var(--danger-color,#dc3545)">
+                    <input type="hidden" name="overwrite_rules" value="false">
+                    <input type="checkbox" name="overwrite_rules" value="true">
+                    <strong>Overwrite existing rules</strong>
+                    <span class="text-muted" style="font-size:.85rem">(replaces rules with matching IDs)</span>
+                </label>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="btn-secondary"
+                style="border-color:var(--warning-color,#ffc107);color:#856404">
+            📥 Import Now
+        </button>
+    </form>
+</div>
+
+<!-- Pre-import snapshot download ──────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>🛡 Pre-Import Safety Snapshot</h2>
+    <p class="text-muted">
+        After a successful import, download the automatic snapshot taken
+        immediately before the import ran. Available for this session only.
+    </p>
+    <a href="/admin/backup/pre-import-snapshot" class="btn-secondary">
+        ⬇ Download Pre-Import Snapshot
+    </a>
+</div>
+
+<script>
+function downloadCustom() {
+    const history = document.getElementById('exp_history').checked;
+    const users   = document.getElementById('exp_include_users').checked;
+    const params  = new URLSearchParams();
+    if (history) params.set('include_history', 'true');
+    if (users)   params.set('include_users', 'true');
+    window.location = '/admin/backup/export?' + params.toString();
+}
+
+function confirmImport() {
+    return confirm(
+        'This will import data into the live database.\n\n' +
+        'A safety snapshot will be saved automatically.\n\n' +
+        'Continue?'
+    );
+}
+</script>
+{% endblock %}

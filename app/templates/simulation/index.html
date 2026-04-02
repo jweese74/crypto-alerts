@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Simulate Alerts{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🧪 Alert Simulation</h1>
+    <p class="text-muted">
+        Replay historical price data against your alert rules to see which would have triggered.
+        No notifications are sent and no rule state is changed.
+    </p>
+</div>
+
+{% for err in errors or [] %}
+<div class="flash-message flash-error">{{ err }}</div>
+{% endfor %}
+
+<!-- Configuration form ────────────────────────────────────────────── -->
+<div class="card">
+    <h2>⚙️ Simulation Setup</h2>
+    <form method="post" action="/simulate" id="sim-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.25rem">
+
+            <!-- Asset -->
+            <div>
+                <label for="asset"><strong>Asset (USD pair)</strong></label>
+                <select id="asset" name="asset" onchange="loadRules(this.value)" required>
+                    <option value="">— select asset —</option>
+                    {% for pair in pairs %}
+                    <option value="{{ pair.symbol }}"
+                        {{ 'selected' if pair.symbol == selected_asset else '' }}>
+                        {{ pair.symbol }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Time range -->
+            <div>
+                <label for="range_key"><strong>Time Range</strong></label>
+                <select id="range_key" name="range_key">
+                    {% for key, label in range_options %}
+                    <option value="{{ key }}" {{ 'selected' if key == selected_range else '' }}>
+                        {{ label }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Rules for selected asset -->
+        <div id="rules-section">
+            <label><strong>Alert Rules to Simulate</strong></label>
+            {% if rules %}
+            <p class="text-muted" style="font-size:.85rem;margin:.25rem 0 .5rem">
+                Select rules to include (leave all unchecked to include all rules for this asset).
+            </p>
+            <div style="display:flex;flex-direction:column;gap:.4rem;max-height:240px;overflow-y:auto;border:1px solid var(--border-color,#dee2e6);border-radius:4px;padding:.75rem">
+                {% for rule in rules %}
+                <label style="display:flex;align-items:center;gap:.6rem;font-weight:normal">
+                    <input type="checkbox" name="rule_ids" value="{{ rule.id }}"
+                           {{ 'checked' if not selected_rule_ids or rule.id|string in selected_rule_ids else '' }}>
+                    <span>
+                        <strong>{{ rule.label or rule.trading_pair }}</strong>
+                        <span class="badge {{ 'badge-above' if rule.condition.value == 'above' else 'badge-below' }}">
+                            {{ rule.condition.value }}
+                        </span>
+                        ${{ '{:,.2f}'.format(rule.threshold) }}
+                        {% if not rule.is_active %}
+                        <span class="text-muted">(disabled)</span>
+                        {% endif %}
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+            {% elif selected_asset %}
+            <p class="text-muted">
+                No alert rules found for <strong>{{ selected_asset }}</strong>.
+                <a href="/alerts/new">Create a rule</a> first.
+            </p>
+            {% else %}
+            <p class="text-muted">Select an asset above to see available rules.</p>
+            {% endif %}
+        </div>
+
+        <div style="margin-top:1.25rem">
+            <button type="submit" class="btn-primary" {{ 'disabled' if not rules else '' }}>
+                ▶ Run Simulation
+            </button>
+            <span class="text-muted" style="margin-left:.75rem;font-size:.85rem">
+                No data will be modified. No alerts will be sent.
+            </span>
+        </div>
+    </form>
+</div>
+
+<!-- Results ────────────────────────────────────────────────────────── -->
+{% if result %}
+<div class="card" style="margin-top:1.5rem">
+    <h2>📊 Simulation Results</h2>
+
+    <!-- Summary strip -->
+    <div class="stat-strip" style="margin-bottom:1.5rem">
+        <div class="stat-card">
+            <div class="stat-num">{{ result.price_point_count }}</div>
+            <div class="stat-label">Price Points Replayed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num">{{ result.rule_results | length }}</div>
+            <div class="stat-label">Rules Evaluated</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num {{ 'stat-warn' if result.total_triggers > 0 else 'stat-ok' }}">
+                {{ result.total_triggers }}
+            </div>
+            <div class="stat-label">Would-Trigger Events</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-num">{{ result.total_skipped }}</div>
+            <div class="stat-label">Suppressed (cooldown / time filter)</div>
+        </div>
+    </div>
+
+    <p class="text-muted" style="margin-bottom:1rem">
+        Period: <strong>{{ result.start_time.strftime('%Y-%m-%d %H:%M UTC') }}</strong>
+        → <strong>{{ result.end_time.strftime('%Y-%m-%d %H:%M UTC') }}</strong>
+        &nbsp;·&nbsp; Asset: <strong>{{ result.asset_symbol }}</strong>
+        &nbsp;·&nbsp; Range: <strong>{{ result.range_key }}</strong>
+    </p>
+
+    <!-- Per-rule breakdown -->
+    {% for rr in result.rule_results %}
+    <details style="margin-bottom:1rem;border:1px solid var(--border-color,#dee2e6);border-radius:6px" {{ 'open' if rr.trigger_count > 0 else '' }}>
+        <summary style="padding:.75rem 1rem;cursor:pointer;font-weight:600;background:var(--bg-secondary,#f8f9fa);border-radius:6px;user-select:none">
+            {% if rr.trigger_count > 0 %}🔔{% else %}🔕{% endif %}
+            {{ rr.rule.label }}
+            <span style="font-weight:normal;color:var(--text-muted,#6c757d);font-size:.9rem">
+                &nbsp;—&nbsp;
+                <span class="badge {{ 'badge-above' if rr.rule.condition.value == 'above' else 'badge-below' }}">
+                    {{ rr.rule.condition.value }}
+                </span>
+                ${{ '{:,.2f}'.format(rr.rule.threshold) }}
+                &nbsp;·&nbsp;
+                {% if rr.trigger_count > 0 %}
+                <strong style="color:var(--warning-color,#e67e22)">{{ rr.trigger_count }} would trigger</strong>
+                {% else %}
+                <span style="color:var(--success-color,#27ae60)">Would not trigger</span>
+                {% endif %}
+                {% if rr.skipped_cooldown %}
+                &nbsp;·&nbsp; {{ rr.skipped_cooldown }} suppressed by cooldown
+                {% endif %}
+                {% if rr.skipped_time_filter %}
+                &nbsp;·&nbsp; {{ rr.skipped_time_filter }} suppressed by time filter
+                {% endif %}
+                {% if rr.deactivated_send_once %}
+                &nbsp;·&nbsp; <span style="color:var(--danger-color,#e74c3c)">disabled after send_once</span>
+                {% endif %}
+            </span>
+        </summary>
+
+        <div style="padding:1rem">
+            {% if rr.triggers %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Timestamp</th>
+                        <th style="text-align:right">Price (USD)</th>
+                        <th style="text-align:right">Threshold (USD)</th>
+                        <th>Direction</th>
+                        <th>Previous State</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in rr.triggers %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ t.triggered_at.strftime('%Y-%m-%d %H:%M:%S UTC') }}</td>
+                        <td style="text-align:right;font-weight:600">
+                            ${{ '{:,.2f}'.format(t.triggered_price) }}
+                        </td>
+                        <td style="text-align:right">
+                            ${{ '{:,.2f}'.format(t.threshold) }}
+                        </td>
+                        <td>
+                            <span class="badge {{ 'badge-above' if t.condition == 'above' else 'badge-below' }}">
+                                ▲ crossed above
+                            </span>
+                            {% if t.condition == 'below' %}
+                            <span class="badge badge-below">▼ crossed below</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">
+                            {{ t.previous_state or 'first eval' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="text-muted" style="margin:0">
+                This rule would <strong>not</strong> have triggered during the selected period.
+            </p>
+            {% endif %}
+
+            <div style="margin-top:.75rem;font-size:.85rem;color:var(--text-muted,#6c757d)">
+                Cooldown: <strong>{{ rr.rule.cooldown_minutes }} min</strong>
+                &nbsp;·&nbsp; Send once: <strong>{{ 'yes' if rr.rule.send_once else 'no' }}</strong>
+                &nbsp;·&nbsp; Time filter: <strong>{{ 'enabled' if rr.rule.time_filter_enabled else 'off' }}</strong>
+            </div>
+        </div>
+    </details>
+    {% endfor %}
+
+    <!-- Disclaimer -->
+    <div class="flash-message flash-info" style="margin-top:1rem">
+        ℹ️ This simulation uses <strong>stored historical prices</strong> which may be aggregated
+        (e.g. 30-min buckets for 7-day range). Actual live alert behaviour may differ slightly
+        at bucket boundaries. No alerts were sent and no rules were modified.
+    </div>
+</div>
+{% endif %}
+
+<style>
+.badge { display:inline-block; padding:.1rem .4rem; border-radius:3px; font-size:.8rem; font-weight:600; }
+.badge-above { background:#d4edda; color:#155724; }
+.badge-below { background:#f8d7da; color:#721c24; }
+</style>
+
+<script>
+/* Reload page with the selected asset pre-populated so rule list updates */
+function loadRules(asset) {
+    if (!asset) return;
+    const range = document.getElementById('range_key').value;
+    window.location = '/simulate?asset=' + encodeURIComponent(asset) + '&range_key=' + range;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}My Alerts{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>My Alert Rules</h1>
+    <a href="/alerts/create" class="btn-primary">+ New Alert</a>
+</div>
+
+{% if rules %}
+<table>
+    <thead>
+        <tr>
+            <th>Name / Pair</th>
+            <th>Condition</th>
+            <th>Current Price</th>
+            <th>Cooldown</th>
+            <th>Window</th>
+            <th>Status</th>
+            <th>Last Triggered</th>
+            <th class="action-col">Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for rule in rules %}
+        {% set current_price = prices.get(rule.trading_pair) %}
+        {% set is_met = (rule.condition.value == 'above' and current_price and current_price >= rule.threshold) or (rule.condition.value == 'below' and current_price and current_price <= rule.threshold) %}
+        <tr class="{{ '' if rule.is_active else 'row-disabled' }}">
+            <td>
+                <strong>{{ rule.label or rule.trading_pair }}</strong>
+                {% if rule.label %}<br><span class="text-muted" style="font-size:.8rem">{{ rule.trading_pair }}</span>{% endif %}
+                {% if rule.send_once %}<span class="badge badge-muted" style="margin-left:.4rem">once</span>{% endif %}
+            </td>
+            <td>
+                <span class="condition-badge condition-{{ rule.condition.value }}">
+                    {{ '▲ above' if rule.condition.value == 'above' else '▼ below' }}
+                    ${{ "{:,.2f}".format(rule.threshold) }}
+                </span>
+            </td>
+            <td>
+                {% if current_price %}
+                <span class="{{ 'price-met' if is_met and rule.is_active else '' }}">
+                    ${{ "{:,.2f}".format(current_price) }}
+                </span>
+                {% else %}
+                <span class="text-muted">—</span>
+                {% endif %}
+            </td>
+            <td class="text-muted">{{ rule.cooldown_minutes }}m</td>
+            <td class="text-muted" style="font-size:.8rem;white-space:nowrap">
+                {% if rule.time_filter_enabled and rule.active_hours_start and rule.active_hours_end %}
+                    🕐 {{ rule.active_hours_start.strftime('%H:%M') }}–{{ rule.active_hours_end.strftime('%H:%M') }}
+                    <br><span style="font-size:.75rem">{{ rule.active_timezone }}</span>
+                    {% if rule.critical_override %}<br><span title="Critical override enabled">⚡</span>{% endif %}
+                {% else %}
+                    Always
+                {% endif %}
+            </td>
+            <td>
+                <span class="badge {{ 'badge-success' if rule.is_active else 'badge-muted' }}">
+                    {{ 'Active' if rule.is_active else 'Paused' }}
+                </span>
+            </td>
+            <td class="text-muted">
+                {% if rule.last_triggered_at %}
+                {{ rule.last_triggered_at.strftime('%m-%d %H:%M') }}
+                {% else %}—{% endif %}
+            </td>
+            <td class="action-col">
+                <!-- Chart -->
+                <a href="/assets/{{ rule.trading_pair | replace('/', '_') }}/chart"
+                   class="btn-sm btn-secondary" title="View Chart">📈</a>
+                <!-- Toggle -->
+                <form method="post" action="/alerts/{{ rule.id }}/toggle" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm {{ 'btn-warning' if rule.is_active else 'btn-success' }}" title="{{ 'Pause' if rule.is_active else 'Enable' }}">
+                        {{ '⏸' if rule.is_active else '▶' }}
+                    </button>
+                </form>
+                <!-- Edit -->
+                <a href="/alerts/{{ rule.id }}/edit" class="btn-sm btn-secondary" title="Edit">✎</a>
+                <!-- Clone -->
+                <form method="post" action="/alerts/{{ rule.id }}/clone" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm btn-secondary" title="Clone">⧉</button>
+                </form>
+                <!-- Delete -->
+                <form method="post" action="/alerts/{{ rule.id }}/delete" class="inline-form"
+                      onsubmit="return confirm('Delete this alert rule?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-sm btn-danger" title="Delete">✕</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">🔔</div>
+    <h2>No alert rules yet</h2>
+    <p>Create your first alert to get notified when a crypto price crosses a threshold.</p>
+    <a href="/alerts/create" class="btn-primary">Create Your First Alert</a>
+</div>
+{% endif %}
+{% endblock %}

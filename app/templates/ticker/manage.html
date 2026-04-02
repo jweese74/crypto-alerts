@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Manage Ticker Assets{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📡 Manage Ticker Assets</h1>
+    <p class="text-muted">
+        Choose which markets appear in your personal ticker view.
+        Featured markets (shown first) are managed by the admin.
+    </p>
+</div>
+
+<div style="display:flex;gap:.75rem;margin-bottom:1.5rem;flex-wrap:wrap">
+    <a href="/ticker" class="btn-primary">📡 Open Ticker View</a>
+    <a href="/dashboard" class="btn-secondary">← Dashboard</a>
+</div>
+
+{# ── Featured markets (read-only) ─────────────────────────────────────────── #}
+<div class="card" style="margin-bottom:1.5rem">
+    <h2>⭐ Featured Markets <span style="font-size:.8rem;font-weight:400;color:var(--text-muted)">(managed by admin)</span></h2>
+    <p class="text-muted" style="margin-bottom:.75rem">
+        These always appear first in your ticker. Contact an admin to change them.
+    </p>
+
+    {% if featured_rows %}
+    <div style="overflow-x:auto">
+    <table>
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>Display Name</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in featured_rows %}
+            <tr>
+                <td><strong>{{ row.asset_symbol }}</strong></td>
+                <td>{{ row.display_name or '—' }}</td>
+                <td>
+                    {% if row.enabled %}<span class="badge badge-ok">Enabled</span>
+                    {% else %}<span class="badge badge-warn">Disabled</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted">No featured markets configured by admin.</p>
+    {% endif %}
+</div>
+
+{# ── Personal ticker assets ───────────────────────────────────────────────── #}
+<div class="card">
+    <h2>👤 My Personal Markets</h2>
+    <p class="text-muted" style="margin-bottom:.75rem">
+        These appear after featured markets in your ticker view.
+        Duplicates of featured markets are shown once (as featured).
+    </p>
+
+    {% if personal_rows %}
+    <div style="overflow-x:auto;margin-bottom:1.5rem">
+    <table>
+        <thead>
+            <tr>
+                <th style="width:2.5rem">Order</th>
+                <th>Symbol</th>
+                <th>Display Label</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in personal_rows %}
+            <tr style="{{ 'opacity:.55' if not row.enabled else '' }}">
+                <td style="text-align:center">
+                    <div style="display:flex;flex-direction:column;gap:.1rem;align-items:center">
+                        <form method="post" action="/ticker/assets/{{ row.asset_symbol | urlencode }}/move-up">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary"
+                                    style="padding:.1rem .3rem;font-size:.7rem;line-height:1"
+                                    title="Move up">▲</button>
+                        </form>
+                        <span style="font-size:.75rem;color:var(--text-muted)">{{ loop.index }}</span>
+                        <form method="post" action="/ticker/assets/{{ row.asset_symbol | urlencode }}/move-down">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary"
+                                    style="padding:.1rem .3rem;font-size:.7rem;line-height:1"
+                                    title="Move down">▼</button>
+                        </form>
+                    </div>
+                </td>
+                <td><strong>{{ row.asset_symbol }}</strong></td>
+                <td>
+                    <form method="post"
+                          action="/ticker/assets/{{ row.asset_symbol | urlencode }}/rename"
+                          style="display:flex;gap:.4rem;align-items:center">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="text" name="display_name"
+                               value="{{ row.display_name or '' }}"
+                               placeholder="optional label"
+                               style="width:130px">
+                        <button type="submit" class="btn-secondary"
+                                style="padding:.2rem .5rem;font-size:.8rem">Save</button>
+                    </form>
+                </td>
+                <td>
+                    {% if row.enabled %}<span class="badge badge-ok">Enabled</span>
+                    {% else %}<span class="badge badge-warn">Disabled</span>{% endif %}
+                </td>
+                <td>
+                    <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+                        <form method="post"
+                              action="/ticker/assets/{{ row.asset_symbol | urlencode }}/toggle">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-secondary"
+                                    style="padding:.2rem .5rem;font-size:.8rem">
+                                {{ '⏸ Disable' if row.enabled else '▶ Enable' }}
+                            </button>
+                        </form>
+                        <form method="post"
+                              action="/ticker/assets/{{ row.asset_symbol | urlencode }}/remove"
+                              onsubmit="return confirm('Remove {{ row.asset_symbol }} from your ticker?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn-danger"
+                                    style="padding:.2rem .5rem;font-size:.8rem">✕ Remove</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="text-muted" style="margin-bottom:1rem">You have no personal ticker assets yet. Add one below.</p>
+    {% endif %}
+
+    {# Add form #}
+    <div style="border-top:1px solid var(--border);padding-top:1rem">
+        <h3 style="margin:0 0 .75rem">Add Market to My Ticker</h3>
+        <form method="post" action="/ticker/assets/add"
+              style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+                <label style="display:block;font-size:.85rem;margin-bottom:.25rem">Asset (USD pair)</label>
+                <select name="asset_symbol" style="min-width:160px" required>
+                    <option value="">— choose —</option>
+                    {% for pair in all_pairs | sort(attribute='symbol') %}
+                        {% if pair.symbol not in personal_symbols %}
+                        <option value="{{ pair.symbol }}">{{ pair.symbol }}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label style="display:block;font-size:.85rem;margin-bottom:.25rem">Label (optional)</label>
+                <input type="text" name="display_name"
+                       placeholder="e.g. My BTC watch"
+                       style="width:160px">
+            </div>
+            <button type="submit" class="btn-primary">+ Add to Ticker</button>
+        </form>
+        {% if not all_pairs %}
+        <p class="text-muted" style="margin-top:.5rem;font-size:.85rem">
+            No Kraken pairs loaded yet — check Admin → Assets to refresh.
+        </p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

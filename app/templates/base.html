@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Crypto Alerts{% endblock %} — Crypto Alert System</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <nav>
+            <a href="/" class="brand">🔔 Crypto Alerts</a>
+            <span class="nav-links">
+                {% if user %}
+                    {% set p = request.url.path %}
+                    <a href="/dashboard" class="{{ 'nav-active' if p == '/dashboard' else '' }}">Dashboard</a>
+                    <a href="/alerts/" class="{{ 'nav-active' if p.startswith('/alerts') else '' }}">Alerts</a>
+                    <a href="/ticker" class="{{ 'nav-active' if p.startswith('/ticker') else '' }}">📡 Ticker</a>
+                    <a href="/simulate" class="{{ 'nav-active' if p.startswith('/simulate') else '' }}">🧪 Simulate</a>
+                    <a href="/events/" class="{{ 'nav-active' if p.startswith('/events') else '' }}">📋 Events</a>
+                    <a href="/settings/" class="{{ 'nav-active' if p.startswith('/settings') else '' }}">Settings</a>
+                    {% if user.is_admin %}
+                    <a href="/admin/" class="{{ 'nav-active' if p.startswith('/admin') else '' }} admin-link">⚙ Admin</a>
+                    {% endif %}
+                    <form method="post" action="/auth/logout" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn-link">Logout ({{ user.username }})</button>
+                    </form>
+                {% else %}
+                    <a href="/auth/login">Login</a>
+                {% endif %}
+            </span>
+        </nav>
+    </header>
+
+    {% if flash_messages %}
+    <div class="flash-container">
+        {% for msg in flash_messages %}
+        <div class="flash flash-{{ msg.category }}">{{ msg.message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>Crypto Alert System &mdash; self-hosted</p>
+    </footer>
+    <script src="/static/js/main.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

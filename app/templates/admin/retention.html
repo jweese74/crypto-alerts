@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block title %}Admin — Data Retention{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>🛡 Admin — Data Retention</h1>
+</div>
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab admin-tab-active">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab">Security</a>
+</div>
+
+{% for msg in flash_messages %}
+<div class="flash-message flash-{{ msg.category }}">{{ msg.message }}</div>
+{% endfor %}
+
+<!-- Storage stats ─────────────────────────────────────────────────── -->
+<div class="stat-strip" style="margin-top:1.5rem">
+    <div class="stat-card">
+        <div class="stat-num">{{ stats.price_total | format_number }}</div>
+        <div class="stat-label">Price History Rows</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ stats.price_per_symbol | length }}</div>
+        <div class="stat-label">Tracked Symbols</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">{{ stats.alert_total | format_number }}</div>
+        <div class="stat-label">Alert History Rows</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-num">
+            {% set last = config.get('retention.last_run', '') %}
+            {{ last if last else '—' }}
+        </div>
+        <div class="stat-label">Last Cleanup</div>
+    </div>
+</div>
+
+<!-- Price history breakdown ───────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>📈 Price History Storage</h2>
+
+    {% if stats.price_total == 0 %}
+    <p class="text-muted">No price history rows stored yet.</p>
+    {% else %}
+    <div style="display:flex;gap:2rem;flex-wrap:wrap;margin-bottom:1rem">
+        <div>
+            <strong>Oldest snapshot:</strong>
+            {{ stats.price_oldest.strftime('%Y-%m-%d %H:%M UTC') if stats.price_oldest else '—' }}
+        </div>
+        <div>
+            <strong>Newest snapshot:</strong>
+            {{ stats.price_newest.strftime('%Y-%m-%d %H:%M UTC') if stats.price_newest else '—' }}
+        </div>
+    </div>
+
+    <table style="width:auto">
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th style="text-align:right">Rows</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for symbol, count in stats.price_per_symbol.items() | sort %}
+            <tr>
+                <td><strong>{{ symbol }}</strong></td>
+                <td style="text-align:right">{{ count | format_number }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+
+<!-- Alert history breakdown ──────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>🔔 Alert History Storage</h2>
+
+    {% if stats.alert_total == 0 %}
+    <p class="text-muted">No alert history rows stored yet.</p>
+    {% else %}
+    <div style="display:flex;gap:2rem;flex-wrap:wrap">
+        <div>
+            <strong>Oldest entry:</strong>
+            {{ stats.alert_oldest.strftime('%Y-%m-%d %H:%M UTC') if stats.alert_oldest else '—' }}
+        </div>
+        <div>
+            <strong>Newest entry:</strong>
+            {{ stats.alert_newest.strftime('%Y-%m-%d %H:%M UTC') if stats.alert_newest else '—' }}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Retention config ─────────────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>⚙️ Retention Settings</h2>
+    <p class="text-muted" style="margin-bottom:1rem">
+        The scheduled cleanup runs automatically once per day.
+        Changes take effect on the next scheduled run or via manual cleanup below.
+    </p>
+
+    <form method="post" action="/admin/retention/settings" id="retention-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <!-- Price history ──────────────────────── -->
+        <fieldset style="border:1px solid var(--border-color,#dee2e6);border-radius:6px;padding:1rem;margin-bottom:1.25rem">
+            <legend style="padding:0 .5rem;font-weight:600">📈 Price History</legend>
+
+            <div class="form-row" style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+                <input type="hidden" name="price_enabled" value="false">
+                <input type="checkbox" id="price_enabled" name="price_enabled" value="true"
+                       {{ 'checked' if config.get('retention.price_history_enabled','true') == 'true' else '' }}
+                       onchange="toggleSection('price-section', this.checked)">
+                <label for="price_enabled" style="margin:0;font-weight:500">Enable automatic pruning</label>
+            </div>
+
+            <div id="price-section" {{ 'style="opacity:.4;pointer-events:none"' if config.get('retention.price_history_enabled','true') != 'true' else '' }}>
+                <label for="price_days">Retain data for</label>
+                <select id="price_days" name="price_days">
+                    {% for d in day_options %}
+                    <option value="{{ d }}" {{ 'selected' if config.get('retention.price_history_days','90')|int == d else '' }}>
+                        {{ d }} days
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="text-muted" style="margin:.4rem 0 0;font-size:.85rem">
+                    Data older than this will be removed. Minimum: 1 day (last 24 h are always preserved).
+                </p>
+            </div>
+        </fieldset>
+
+        <!-- Alert history ──────────────────────── -->
+        <fieldset style="border:1px solid var(--border-color,#dee2e6);border-radius:6px;padding:1rem;margin-bottom:1.25rem">
+            <legend style="padding:0 .5rem;font-weight:600">🔔 Alert History</legend>
+
+            <div class="form-row" style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem">
+                <input type="hidden" name="alert_enabled" value="false">
+                <input type="checkbox" id="alert_enabled" name="alert_enabled" value="true"
+                       {{ 'checked' if config.get('retention.alert_history_enabled','false') == 'true' else '' }}
+                       onchange="toggleSection('alert-section', this.checked)">
+                <label for="alert_enabled" style="margin:0;font-weight:500">Enable automatic pruning</label>
+            </div>
+
+            <div id="alert-section" {{ 'style="opacity:.4;pointer-events:none"' if config.get('retention.alert_history_enabled','false') != 'true' else '' }}>
+                <label for="alert_days">Retain data for</label>
+                <select id="alert_days" name="alert_days">
+                    {% for d in day_options %}
+                    <option value="{{ d }}" {{ 'selected' if config.get('retention.alert_history_days','365')|int == d else '' }}>
+                        {{ d }} days
+                    </option>
+                    {% endfor %}
+                </select>
+                <p class="text-muted" style="margin:.4rem 0 0;font-size:.85rem">
+                    Data older than this will be removed. Minimum: 7 days.
+                </p>
+            </div>
+        </fieldset>
+
+        <button type="submit" class="btn-primary">💾 Save Settings</button>
+    </form>
+</div>
+
+<!-- Manual cleanup ──────────────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+    <h2>🧹 Manual Cleanup</h2>
+
+    {% set last_p = config.get('retention.last_price_deleted', '') %}
+    {% set last_a = config.get('retention.last_alert_deleted', '') %}
+    {% if last_p or last_a %}
+    <p class="text-muted">
+        Last run removed
+        <strong>{{ last_p or '0' }}</strong> price rows
+        and <strong>{{ last_a or '0' }}</strong> alert rows.
+    </p>
+    {% endif %}
+
+    <p>
+        Run the retention cleanup immediately using the current settings above.
+        Only data outside the configured retention window will be removed.
+    </p>
+
+    <form method="post" action="/admin/retention/run"
+          onsubmit="return confirm('Run cleanup now using current retention settings?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn-secondary">🗑 Run Cleanup Now</button>
+    </form>
+</div>
+
+<script>
+function toggleSection(sectionId, enabled) {
+    const el = document.getElementById(sectionId);
+    if (!el) return;
+    el.style.opacity = enabled ? '1' : '0.4';
+    el.style.pointerEvents = enabled ? '' : 'none';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}SMTP Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>📧 SMTP Configuration</h1>
+    <a href="/settings/" class="btn-secondary">← Back</a>
+</div>
+
+<div class="admin-tabs">
+    <a href="/admin/" class="admin-tab">Overview</a>
+    <a href="/admin/users" class="admin-tab">Users</a>
+    <a href="/admin/alerts" class="admin-tab">All Alerts</a>
+    <a href="/admin/assets" class="admin-tab">Assets</a>
+    <a href="/settings/smtp" class="admin-tab admin-tab-active">SMTP</a>
+    <a href="/settings/notifications" class="admin-tab">Notifications</a>
+    <a href="/admin/retention" class="admin-tab">Retention</a>
+    <a href="/admin/backup" class="admin-tab">Backup</a>
+    <a href="/admin/security" class="admin-tab">Security</a>
+</div>
+
+{% for msg in flash_messages %}
+<div class="flash-message flash-{{ msg.category }}">{{ msg.message }}</div>
+{% endfor %}
+
+<div class="two-col">
+
+  <!-- ── SMTP Config Form ─────────────────────────────────────────────── -->
+  <div class="card card-wide">
+    <h2>Mail Server Settings</h2>
+    <p class="text-muted" style="margin-bottom:1.2rem;font-size:.85rem">
+      Values saved here override your <code>.env</code> file at runtime.
+    </p>
+
+    <form method="post" action="/settings/smtp">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="form-row">
+        <label>SMTP Host
+          <input type="text" name="smtp_host" value="{{ smtp.host }}"
+                 placeholder="smtp.cogeco.ca" autocomplete="off" required>
+        </label>
+        <label style="max-width:120px">Port
+          <input type="number" name="smtp_port" value="{{ smtp.port }}"
+                 placeholder="465" min="1" max="65535" required>
+        </label>
+      </div>
+
+      <label>Security Mode
+        <select name="smtp_security_mode" style="width:100%"
+                onchange="updatePortHint(this.value)">
+          <option value="ssl"      {% if smtp.security_mode == 'ssl'      %}selected{% endif %}>
+            SSL/TLS — implicit TLS from connect (port 465 typical)
+          </option>
+          <option value="starttls" {% if smtp.security_mode == 'starttls' %}selected{% endif %}>
+            STARTTLS — upgrade after connect (port 587 typical)
+          </option>
+          <option value="none"     {% if smtp.security_mode == 'none'     %}selected{% endif %}>
+            None — plain SMTP, no encryption (port 25 or 587)
+          </option>
+        </select>
+        <small id="port-hint" style="color:var(--muted)"></small>
+      </label>
+
+      <label>Username
+        <input type="text" name="smtp_user" value="{{ smtp.user }}"
+               placeholder="you@cogeco.ca" autocomplete="off">
+      </label>
+
+      <label>Password
+        <input type="password" name="smtp_password" value=""
+               placeholder="{% if smtp.has_password %}Leave blank to keep current password{% else %}Enter password{% endif %}"
+               autocomplete="new-password">
+        <small>
+          {% if smtp.has_password %}
+            A password is currently saved. Leave blank to keep it; enter a new value to change it.
+          {% else %}
+            No password saved yet.
+          {% endif %}
+        </small>
+      </label>
+
+      <div class="form-row">
+        <label>From Address
+          <input type="email" name="smtp_from" value="{{ smtp.from_addr }}"
+                 placeholder="alerts@example.com" required>
+        </label>
+        <label>From Name <span style="color:var(--muted)">(optional)</span>
+          <input type="text" name="smtp_from_name" value="{{ smtp.from_name }}"
+                 placeholder="Crypto Alerts">
+        </label>
+      </div>
+
+      <label style="max-width:160px">Connection Timeout (seconds)
+        <input type="number" name="smtp_timeout" value="{{ smtp.timeout }}"
+               min="5" max="60" placeholder="15">
+      </label>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary">Save Settings</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ── Test + Diagnostics ────────────────────────────────────────────── -->
+  <div>
+    <div class="card">
+      <h2>Connection Test</h2>
+      <p class="text-muted" style="font-size:.85rem;margin-bottom:1rem">
+        Validates the current config (DNS → TCP → TLS → Auth) without sending email.
+        Shows exactly which stage fails.
+      </p>
+      <form method="post" action="/settings/validate-smtp">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn-secondary btn-full">🔌 Validate Connection</button>
+      </form>
+
+      <hr style="border-color:var(--border);margin:1.5rem 0">
+
+      <h2>Send Test Email</h2>
+      <form method="post" action="/settings/test-email">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>Recipient
+          <input type="email" name="to_address" value="{{ user.email }}"
+                 placeholder="{{ user.email }}">
+        </label>
+        <button type="submit" class="btn-primary btn-full">📨 Send Test Email</button>
+      </form>
+    </div>
+
+    <!-- ── Diagnostics panel ──────────────────────────────────────────── -->
+    <div class="card" style="margin-top:1.2rem">
+      <h2>📊 Last Test Results</h2>
+      {% if diag.last_test_status %}
+        <div style="margin-bottom:.8rem;">
+          <span style="font-weight:700;
+            color:{% if diag.last_test_status == 'ok' %}#2ecc71{% else %}#e74c3c{% endif %}">
+            {% if diag.last_test_status == 'ok' %}✅ OK{% else %}❌ Failed{% endif %}
+          </span>
+        </div>
+        {% if diag.last_test_message %}
+          <pre style="font-size:.82rem;white-space:pre-wrap;word-break:break-word;
+                      background:var(--input-bg);padding:.8rem;border-radius:6px;
+                      color:var(--text)">{{ diag.last_test_message }}</pre>
+        {% endif %}
+        {% if diag.last_test_ok %}
+          <p style="color:var(--muted);font-size:.82rem;margin-top:.4rem">
+            Last successful test: {{ diag.last_test_ok[:19] | replace('T',' ') }} UTC
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="text-muted">No test has been run yet.</p>
+      {% endif %}
+      {% if diag.last_send_ok %}
+        <p style="color:var(--muted);font-size:.82rem;margin-top:.4rem;border-top:1px solid var(--border);padding-top:.6rem">
+          Last successful alert email: {{ diag.last_send_ok[:19] | replace('T',' ') }} UTC
+        </p>
+      {% endif %}
+    </div>
+
+    <!-- ── Current effective config (no password) ─────────────────────── -->
+    <div class="card" style="margin-top:1.2rem">
+      <h2>⚙️ Effective Configuration</h2>
+      <table class="data-table" style="font-size:.88rem">
+        <tbody>
+          <tr><td>Host</td><td><strong>{{ smtp.host or '—' }}</strong></td></tr>
+          <tr><td>Port</td><td><strong>{{ smtp.port }}</strong></td></tr>
+          <tr><td>Security</td><td><strong>{{ smtp.security_mode | upper }}</strong></td></tr>
+          <tr><td>Username</td><td><strong>{{ smtp.user or '(none)' }}</strong></td></tr>
+          <tr><td>Password</td><td><strong>{% if smtp.has_password %}••••••••{% else %}(not set){% endif %}</strong></td></tr>
+          <tr><td>From</td><td><strong>{{ smtp.from_addr or '—' }}</strong>{% if smtp.from_name %} ({{ smtp.from_name }}){% endif %}</td></tr>
+          <tr><td>Timeout</td><td><strong>{{ smtp.timeout }}s</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Common providers reference ──────────────────────────────────────── -->
+<div class="card" style="margin-top:1.5rem">
+  <h2>Common SMTP Providers</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>Provider</th><th>Host</th><th>Port</th><th>Security Mode</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Cogeco</td><td>smtp.cogeco.ca</td><td>465</td><td><strong>SSL/TLS</strong></td><td>Requires authentication</td></tr>
+      <tr><td>Gmail</td><td>smtp.gmail.com</td><td>587</td><td><strong>STARTTLS</strong></td><td>Use App Password if 2FA enabled</td></tr>
+      <tr><td>Gmail (alt)</td><td>smtp.gmail.com</td><td>465</td><td><strong>SSL/TLS</strong></td><td>—</td></tr>
+      <tr><td>Outlook / Office 365</td><td>smtp.office365.com</td><td>587</td><td><strong>STARTTLS</strong></td><td>—</td></tr>
+      <tr><td>SendGrid</td><td>smtp.sendgrid.net</td><td>587</td><td><strong>STARTTLS</strong></td><td>—</td></tr>
+      <tr><td>Mailgun</td><td>smtp.mailgun.org</td><td>587</td><td><strong>STARTTLS</strong></td><td>—</td></tr>
+      <tr><td>Amazon SES (us-east-1)</td><td>email-smtp.us-east-1.amazonaws.com</td><td>587</td><td><strong>STARTTLS</strong></td><td>—</td></tr>
+      <tr><td>Yahoo Mail</td><td>smtp.mail.yahoo.com</td><td>465</td><td><strong>SSL/TLS</strong></td><td>Requires App Password</td></tr>
+      <tr><td>Fastmail</td><td>smtp.fastmail.com</td><td>587</td><td><strong>STARTTLS</strong></td><td>—</td></tr>
+    </tbody>
+  </table>
+  <p class="text-muted" style="font-size:.82rem;margin-top:.8rem">
+    <strong>Port 465 (SSL/TLS):</strong> TLS wraps the connection before any SMTP commands — use <em>SSL/TLS</em> mode.<br>
+    <strong>Port 587 (STARTTLS):</strong> Plain TCP connect, then upgraded to TLS via the STARTTLS command — use <em>STARTTLS</em> mode.<br>
+    Mixing modes and ports (e.g. STARTTLS on port 465) will fail.
+  </p>
+</div>
+
+<script>
+function updatePortHint(mode) {
+  const hints = {
+    ssl:      'Typical port: 465  — TLS wraps the connection from the start.',
+    starttls: 'Typical port: 587  — Plain connect, then STARTTLS upgrade.',
+    none:     'Typical port: 25 or 587  — No encryption. Not recommended.'
+  };
+  document.getElementById('port-hint').textContent = hints[mode] || '';
+}
+// Run on page load
+updatePortHint(document.querySelector('[name=smtp_security_mode]').value);
+</script>
+{% endblock %}

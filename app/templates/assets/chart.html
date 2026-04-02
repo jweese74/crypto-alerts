@@ -1,0 +1,594 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} Chart{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.asset-nav { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.asset-btn {
+    padding: .35rem .9rem; border-radius: 20px; font-size: .85rem;
+    text-decoration: none; color: var(--text-muted);
+    border: 1px solid var(--border); background: var(--surface);
+    transition: all .15s;
+}
+.asset-btn:hover { color: var(--text); border-color: var(--accent); }
+.asset-btn-active { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+
+.range-buttons { display: flex; gap: .4rem; flex-wrap: wrap; }
+.range-btn {
+    padding: .3rem .9rem; border-radius: 6px; font-size: .85rem; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+    text-decoration: none;
+}
+.range-btn:hover { border-color: var(--accent); color: var(--text); }
+.range-btn-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.chart-layout { display: grid; grid-template-columns: 1fr 290px; gap: 1.5rem; align-items: start; }
+@media (max-width: 900px) { .chart-layout { grid-template-columns: 1fr; } }
+
+/* ── Chart wrapper ────────────────────────────────────────────────────────── */
+.chart-wrapper {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.5rem; position: relative;
+}
+.chart-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: .8rem; flex-wrap: wrap; gap: .5rem;
+}
+.ma-controls { display: flex; gap: .4rem; align-items: center; }
+.ma-btn {
+    padding: .22rem .7rem; border-radius: 5px; font-size: .78rem; cursor: pointer;
+    border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+    transition: all .15s; user-select: none;
+}
+.ma-btn:hover { border-color: var(--accent); color: var(--text); }
+.ma-btn.ma-active { color: #fff; border-color: transparent; }
+.ma-btn[data-period="10"].ma-active  { background: #e67e22; }
+.ma-btn[data-period="50"].ma-active  { background: #8e44ad; }
+
+.chart-container { position: relative; height: 400px; }
+
+/* ── Price header ─────────────────────────────────────────────────────────── */
+.current-price-badge {
+    display: inline-block; font-size: 1.8rem; font-weight: 700;
+    color: var(--accent); font-variant-numeric: tabular-nums;
+}
+.price-meta { color: var(--text-muted); font-size: .82rem; margin-top: .3rem; }
+
+/* ── Sidebar cards ────────────────────────────────────────────────────────── */
+.threshold-legend { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; }
+.threshold-item {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: .65rem .9rem; font-size: .85rem; position: relative; overflow: hidden;
+}
+.threshold-item::before {
+    content: ''; position: absolute; inset: 0;
+    opacity: .07; pointer-events: none;
+}
+.threshold-item.above { border-left: 3px solid #2ecc71; }
+.threshold-item.above::before { background: #2ecc71; }
+.threshold-item.below { border-left: 3px solid #e74c3c; }
+.threshold-item.below::before { background: #e74c3c; }
+.threshold-item.disabled { opacity: .45; }
+.threshold-price { font-weight: 700; font-size: 1rem; }
+.threshold-cond  { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.threshold-item.above .threshold-cond { color: #2ecc71; }
+.threshold-item.below .threshold-cond { color: #e74c3c; }
+.threshold-label { color: var(--text-muted); font-size: .78rem; margin-top: .2rem; }
+
+/* ── Trigger list ─────────────────────────────────────────────────────────── */
+.trigger-item {
+    border-left: 3px solid var(--warning); padding: .35rem .6rem;
+    margin-bottom: .35rem; font-size: .82rem; border-radius: 0 4px 4px 0;
+}
+.trigger-item.sev-elevated { border-left-color: #f39c12; }
+.trigger-item.sev-critical  { border-left-color: #e74c3c; }
+
+/* ── No history notice ────────────────────────────────────────────────────── */
+.no-history-notice {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 3rem; text-align: center; color: var(--text-muted);
+}
+.no-history-notice .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Asset nav strip -->
+<div class="asset-nav">
+    {% for pair in all_pairs %}
+    <a href="/assets/{{ pair.url }}/chart?range={{ range }}"
+       class="asset-btn {{ 'asset-btn-active' if pair.symbol == symbol else '' }}">
+        {{ pair.symbol }}
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Page header -->
+<div class="page-header">
+    <div>
+        <h1>{{ symbol }}</h1>
+        {% if current_price %}
+        <div class="current-price-badge">${{ "{:,.2f}".format(current_price) }}</div>
+        <div class="price-meta">Current price · {{ chart_data.point_count }} data points</div>
+        {% else %}
+        <div class="price-meta text-muted">No live price available</div>
+        {% endif %}
+    </div>
+    <div class="range-buttons">
+        {% for rkey, rlabel in range_labels.items() %}
+        <a href="/assets/{{ symbol_url }}/chart?range={{ rkey }}"
+           class="range-btn {{ 'range-btn-active' if range == rkey else '' }}">
+            {{ rlabel }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+{% if has_history %}
+<div class="chart-layout">
+
+    <!-- ── Main chart ──────────────────────────────────────────────────── -->
+    <div class="chart-wrapper">
+        <!-- Toolbar: MA toggles -->
+        <div class="chart-toolbar">
+            <span class="text-muted" style="font-size:.8rem">Price (USD)</span>
+            <div class="ma-controls">
+                <span class="text-muted" style="font-size:.78rem;margin-right:.2rem">MA:</span>
+                <button class="ma-btn" data-period="10" title="10-period moving average">MA(10)</button>
+                <button class="ma-btn" data-period="50" title="50-period moving average">MA(50)</button>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="priceChart"></canvas>
+        </div>
+        <!-- Compact legend hint -->
+        <div style="margin-top:.6rem;font-size:.75rem;color:var(--text-muted);display:flex;gap:1rem;flex-wrap:wrap">
+            <span><span style="display:inline-block;width:18px;height:2px;background:#7c6af7;vertical-align:middle;margin-right:4px"></span>Price</span>
+            {% if thresholds %}
+            <span><span style="display:inline-block;width:18px;height:0;border-top:2px dashed #2ecc71;vertical-align:middle;margin-right:4px"></span>Above threshold</span>
+            <span><span style="display:inline-block;width:18px;height:0;border-top:2px dashed #e74c3c;vertical-align:middle;margin-right:4px"></span>Below threshold</span>
+            {% endif %}
+            {% if chart_data.triggers %}
+            <span>🔔 Alert trigger</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
+    <div>
+
+        <!-- Alert threshold lines -->
+        <div class="card">
+            <h2>Your Alert Lines</h2>
+            {% if thresholds %}
+            <div class="threshold-legend">
+                {% for t in thresholds %}
+                <div class="threshold-item {{ t.condition }} {{ '' if t.is_active else 'disabled' }}">
+                    <div class="threshold-cond">
+                        {{ '▲ above' if t.condition == 'above' else '▼ below' }}
+                    </div>
+                    <div class="threshold-price">${{ "{:,.2f}".format(t.price) }}</div>
+                    <div class="threshold-label">
+                        {{ t.label }}
+                        {% if not t.is_active %}
+                        <span class="badge badge-muted" style="font-size:.7rem">paused</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted" style="font-size:.85rem">
+                No alert rules for {{ symbol }}.<br>
+                <a href="/alerts/create" style="color:var(--accent)">Create one →</a>
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- Quick actions -->
+        <div class="card" style="margin-top:1rem">
+            <h2>Quick Actions</h2>
+            <div style="display:flex;flex-direction:column;gap:.6rem;margin-top:.5rem">
+                <a href="/alerts/create" class="btn-primary" style="text-align:center">+ New Alert</a>
+                <a href="/alerts/" class="btn-secondary" style="text-align:center">My Alerts</a>
+                <a href="/alerts/history" class="btn-secondary" style="text-align:center">Alert History</a>
+            </div>
+        </div>
+
+        <!-- Recent triggers -->
+        {% if chart_data.triggers %}
+        <div class="card" style="margin-top:1rem">
+            <h2>Recent Triggers</h2>
+            <div style="margin-top:.5rem">
+                {% for t in chart_data.triggers[:6] %}
+                <div class="trigger-item sev-{{ t.severity }}">
+                    <strong>${{ "{:,.2f}".format(t.price) }}</strong>
+                    {% if t.severity != 'normal' %}
+                    <span class="badge badge-{{ t.severity }}" style="font-size:.7rem;margin-left:.3rem">{{ t.severity }}</span>
+                    {% endif %}
+                    <div class="text-muted" style="font-size:.78rem;margin-top:.15rem">
+                        {{ t.label }}
+                    </div>
+                    {% if t.message %}
+                    <div class="text-muted" style="font-size:.77rem;margin-top:.1rem">
+                        {{ t.message[:60] }}{% if t.message|length > 60 %}…{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+    </div><!-- /sidebar -->
+</div><!-- /chart-layout -->
+
+{% else %}
+<div class="no-history-notice">
+    <div class="icon">📊</div>
+    <h2>No price history yet</h2>
+    <p>Price snapshots are collected every few minutes during polling cycles.</p>
+    <p style="margin-top:.5rem">Check back after the first polling cycle completes.</p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+'use strict';
+
+const data = {{ chart_data | tojson }};
+if (!data.prices || data.prices.length === 0) return;
+
+// ── Colour palette ──────────────────────────────────────────────────────────
+const C = {
+    price:    '#7c6af7',
+    priceFill:'rgba(124,106,247,0.07)',
+    above:    '#2ecc71',
+    below:    '#e74c3c',
+    current:  'rgba(124,106,247,0.5)',
+    ma10:     '#e67e22',
+    ma50:     '#9b59b6',
+    grid:     '#2a2d3e',
+    text:     '#888',
+    tooltip:  '#1a1d27',
+    sevNorm:  '#f0c040',
+    sevElev:  '#f39c12',
+    sevCrit:  '#e74c3c',
+};
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function fmtPrice(v) {
+    if (v === null || v === undefined) return '—';
+    return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtTimestamp(iso) {
+    if (!iso) return '';
+    try {
+        const d = new Date(iso);
+        return d.toLocaleString('en-US', {
+            month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: false,
+            timeZone: 'UTC',
+        }) + ' UTC';
+    } catch { return iso; }
+}
+
+function severityColor(sev) {
+    if (sev === 'critical') return C.sevCrit;
+    if (sev === 'elevated') return C.sevElev;
+    return C.sevNorm;
+}
+
+// ── Moving average ──────────────────────────────────────────────────────────
+function computeMA(prices, period) {
+    return prices.map((_, i) => {
+        if (i < period - 1) return null;
+        const slice = prices.slice(i - period + 1, i + 1);
+        if (slice.some(v => v === null)) return null;
+        return Math.round(slice.reduce((a, b) => a + b, 0) / period * 100) / 100;
+    });
+}
+
+const ma10 = computeMA(data.prices, 10);
+const ma50 = computeMA(data.prices, 50);
+
+// ── Build annotations ───────────────────────────────────────────────────────
+const annotations = {};
+
+// Threshold lines + zone shading
+data.thresholds.forEach((t, i) => {
+    const color  = t.condition === 'above' ? C.above : C.below;
+    const alpha  = t.is_active ? 'cc' : '44';
+    const zoneAlpha = t.is_active ? 0.05 : 0.02;
+
+    // Dashed threshold line
+    annotations[`tline_${i}`] = {
+        type: 'line',
+        yMin: t.price, yMax: t.price,
+        borderColor: color + alpha,
+        borderWidth: t.is_active ? 2 : 1,
+        borderDash: t.is_active ? [7, 4] : [3, 4],
+        label: {
+            display: true,
+            content: `${t.condition === 'above' ? '▲' : '▼'} ${t.label}  ${fmtPrice(t.price)}`,
+            position: 'end',
+            backgroundColor: 'rgba(15,17,23,0.88)',
+            color: color,
+            font: { size: 11, weight: '600' },
+            padding: { x: 7, y: 4 },
+            yAdjust: t.condition === 'above' ? -16 : 8,
+            borderRadius: 4,
+        },
+    };
+
+    // Zone shading (very subtle fill above/below each threshold)
+    if (t.is_active) {
+        // Build rgba from pre-defined palette values
+        const zoneRgba = t.condition === 'above'
+            ? `rgba(46,204,113,${zoneAlpha})`
+            : `rgba(231,76,60,${zoneAlpha})`;
+        annotations[`zone_${i}`] = {
+            type: 'box',
+            // above threshold → shade region above; below → shade region below
+            ...(t.condition === 'above'
+                ? { yMin: t.price }         // yMax defaults to scale max
+                : { yMax: t.price }),        // yMin defaults to scale min
+            backgroundColor: zoneRgba,
+            borderWidth: 0,
+        };
+    }
+});
+
+// Current price reference line
+if (data.current_price) {
+    annotations.currentPrice = {
+        type: 'line',
+        yMin: data.current_price, yMax: data.current_price,
+        borderColor: C.current,
+        borderWidth: 1,
+        borderDash: [3, 3],
+    };
+}
+
+// Vertical tick lines at trigger points (subtle)
+data.triggers.forEach((t, i) => {
+    annotations[`tvline_${i}`] = {
+        type: 'line',
+        xMin: t.idx, xMax: t.idx,
+        borderColor: severityColor(t.severity) + '33',
+        borderWidth: 1,
+        borderDash: [2, 3],
+    };
+});
+
+// ── Build datasets ──────────────────────────────────────────────────────────
+
+// Main price line
+const priceDataset = {
+    label: `${data.symbol} Price`,
+    data: data.prices,
+    borderColor: C.price,
+    backgroundColor: C.priceFill,
+    fill: true,
+    tension: 0.3,
+    pointRadius: 0,
+    pointHoverRadius: 5,
+    pointHoverBackgroundColor: C.price,
+    borderWidth: 2,
+    order: 10,
+};
+
+// MA datasets (hidden by default; toggled via buttons)
+const ma10Dataset = {
+    label: 'MA(10)',
+    data: ma10,
+    borderColor: C.ma10,
+    backgroundColor: 'transparent',
+    fill: false,
+    tension: 0.2,
+    pointRadius: 0,
+    pointHoverRadius: 3,
+    borderWidth: 1.5,
+    borderDash: [4, 3],
+    spanGaps: false,
+    hidden: true,
+    order: 5,
+};
+
+const ma50Dataset = {
+    label: 'MA(50)',
+    data: ma50,
+    borderColor: C.ma50,
+    backgroundColor: 'transparent',
+    fill: false,
+    tension: 0.2,
+    pointRadius: 0,
+    pointHoverRadius: 3,
+    borderWidth: 1.5,
+    borderDash: [6, 4],
+    spanGaps: false,
+    hidden: true,
+    order: 4,
+};
+
+// Trigger scatter (per-point color by severity)
+const trigBgColors = data.triggers.map(t => severityColor(t.severity));
+const trigBorderColors = trigBgColors;
+const trigRadii = data.triggers.map(t =>
+    t.severity === 'critical' ? 10 : t.severity === 'elevated' ? 8 : 6
+);
+
+const triggerDataset = {
+    label: 'Alert Triggered',
+    type: 'scatter',
+    data: data.triggers.map(t => ({ x: t.idx, y: t.price })),
+    backgroundColor: trigBgColors,
+    borderColor: trigBorderColors,
+    borderWidth: 1.5,
+    pointStyle: 'triangle',
+    pointRadius: trigRadii,
+    pointHoverRadius: trigRadii.map(r => r + 3),
+    showLine: false,
+    order: 1,
+    parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+};
+
+const datasets = [priceDataset, ma10Dataset, ma50Dataset];
+if (data.triggers.length > 0) datasets.push(triggerDataset);
+
+// ── Tooltip callbacks ────────────────────────────────────────────────────────
+function tooltipTitle(items) {
+    const idx = items[0].dataIndex;
+    const ts  = data.timestamps?.[idx];
+    return ts ? fmtTimestamp(ts) : items[0].label;
+}
+
+function tooltipLabel(ctx) {
+    const idx   = ctx.dataIndex;
+    const price = ctx.parsed.y;
+
+    // Trigger scatter point
+    if (ctx.dataset.type === 'scatter') {
+        const trigger = data.triggers[idx];
+        if (!trigger) return fmtPrice(price);
+        const lines = [
+            `🔔 Triggered at ${fmtPrice(price)}`,
+            `Time: ${fmtTimestamp(trigger.triggered_at)}`,
+        ];
+        if (trigger.severity && trigger.severity !== 'normal') {
+            lines.push(`Severity: ${trigger.severity.toUpperCase()}`);
+        }
+        if (trigger.message) {
+            lines.push(trigger.message.slice(0, 80));
+        }
+        return lines;
+    }
+
+    // MA lines
+    if (ctx.dataset.label?.startsWith('MA')) {
+        return price !== null ? `${ctx.dataset.label}: ${fmtPrice(price)}` : null;
+    }
+
+    // Main price line — also show threshold proximity
+    const lines = [`Price: ${fmtPrice(price)}`];
+    for (const t of data.thresholds) {
+        if (!t.is_active) continue;
+        const pct = Math.abs((price - t.price) / t.price * 100);
+        if (pct < 0.75) {
+            const dir = price >= t.price ? '↑' : '↓';
+            lines.push(`⚠ ${dir} ${pct.toFixed(2)}% from ${t.label}`);
+        }
+    }
+    return lines;
+}
+
+function tooltipAfterBody(items) {
+    // Show MA values alongside the main price tooltip
+    const idx = items[0]?.dataIndex;
+    if (idx === undefined) return [];
+    const lines = [];
+    if (!ma10Dataset.hidden && ma10[idx] != null)
+        lines.push(`MA(10): ${fmtPrice(ma10[idx])}`);
+    if (!ma50Dataset.hidden && ma50[idx] != null)
+        lines.push(`MA(50): ${fmtPrice(ma50[idx])}`);
+    return lines;
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+const ctx = document.getElementById('priceChart').getContext('2d');
+const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: data.labels,
+        datasets: datasets,
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: {
+                display: true,
+                labels: {
+                    color: C.text,
+                    boxWidth: 18,
+                    padding: 14,
+                    usePointStyle: false,
+                    filter(item) {
+                        // Hide MA datasets from legend (we show them with our own buttons)
+                        // Show price + triggers if present
+                        return !item.text.startsWith('MA(');
+                    },
+                },
+            },
+            tooltip: {
+                backgroundColor: C.tooltip,
+                borderColor: C.grid,
+                borderWidth: 1,
+                titleColor: '#ccc',
+                bodyColor: '#ddd',
+                footerColor: '#999',
+                padding: 10,
+                callbacks: {
+                    title:     tooltipTitle,
+                    label:     tooltipLabel,
+                    afterBody: tooltipAfterBody,
+                },
+            },
+            annotation: { annotations },
+        },
+        scales: {
+            x: {
+                ticks: { color: C.text, maxTicksLimit: 12, maxRotation: 0 },
+                grid:  { color: C.grid },
+            },
+            y: {
+                ticks: {
+                    color: C.text,
+                    callback(v) {
+                        if (v >= 1_000_000) return '$' + (v / 1_000_000).toFixed(2) + 'M';
+                        if (v >= 1_000)     return '$' + (v / 1_000).toFixed(1) + 'k';
+                        return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    },
+                },
+                grid: { color: C.grid },
+            },
+        },
+    },
+});
+
+// ── MA toggle buttons ────────────────────────────────────────────────────────
+document.querySelectorAll('.ma-btn').forEach(btn => {
+    const period   = parseInt(btn.dataset.period, 10);
+    const dataset  = period === 10 ? ma10Dataset : ma50Dataset;
+    const dsIndex  = datasets.indexOf(dataset);
+
+    // Disable button if not enough data
+    const minLen = period === 10 ? 10 : 50;
+    if (data.prices.filter(v => v !== null).length < minLen) {
+        btn.disabled = true;
+        btn.title    = `Need at least ${minLen} data points for MA(${period})`;
+        btn.style.opacity = '.35';
+        return;
+    }
+
+    btn.addEventListener('click', () => {
+        const hidden = !dataset.hidden;
+        dataset.hidden = hidden;
+        chart.setDatasetVisibility(dsIndex, !hidden);
+        chart.update('none');
+        btn.classList.toggle('ma-active', !hidden);
+    });
+});
+
+})();
+</script>
+{% endblock %}

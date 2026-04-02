@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}{{ form_title }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ form_title }}</h1>
+    <a href="/alerts/" class="btn-secondary">← Back to Alerts</a>
+</div>
+
+<div class="form-page">
+<form method="post" action="{{ action }}" class="form-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="form-section">
+        <h3>Alert Target</h3>
+
+        <label>Asset (USD)
+            <input type="text" name="trading_pair" id="pair-input"
+                   list="kraken-pairs"
+                   placeholder="Type to search… e.g. BTC/USD, SOL/USD, ADA/USD"
+                   value="{{ rule.trading_pair if rule else '' }}"
+                   required autocomplete="off"
+                   style="width:100%; text-transform:uppercase;">
+            <datalist id="kraken-pairs">
+                {% for pair in pairs %}
+                <option value="{{ pair.symbol }}">{{ pair.base }} — {{ pair.symbol }}</option>
+                {% endfor %}
+            </datalist>
+            <small>
+                Type a symbol (e.g. SOL, ADA) or full pair (e.g. SOL/USD). All thresholds are in USD.
+                {% if allow_custom %}<strong> Custom pairs enabled.</strong>{% endif %}
+            </small>
+        </label>
+
+        <div class="form-row">
+            <label>Condition
+                <select name="condition" required>
+                    {% for cond in conditions %}
+                    <option value="{{ cond.value }}"
+                            {{ 'selected' if rule and rule.condition == cond else '' }}>
+                        {{ '▲ Price goes ABOVE' if cond.value == 'above' else '▼ Price goes BELOW' }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </label>
+
+            <label>Threshold Price (USD)
+                <input type="number" name="threshold" step="0.01" min="0.001" required
+                       value="{{ rule.threshold if rule else '' }}"
+                       placeholder="e.g. 70000">
+            </label>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>Notification</h3>
+
+        <label>Rule Name <span class="optional">(optional)</span>
+            <input type="text" name="label" maxlength="100"
+                   value="{{ rule.label or '' if rule else '' }}"
+                   placeholder="e.g. BTC Moon Alert">
+            <small>A friendly name shown in your alerts list.</small>
+        </label>
+
+        <label>Custom Note <span class="optional">(optional)</span>
+            <textarea name="custom_message" rows="3" maxlength="500"
+                      placeholder="Extra note included in the alert email…">{{ rule.custom_message or '' if rule else '' }}</textarea>
+        </label>
+    </div>
+
+    <div class="form-section">
+        <h3>Behaviour</h3>
+
+        <div class="form-row">
+            <label>Cooldown (minutes)
+                <input type="number" name="cooldown_minutes" min="1" max="10080"
+                       value="{{ rule.cooldown_minutes if rule else 60 }}">
+                <small>Minimum time between repeat alerts.</small>
+            </label>
+
+            <label class="checkbox-label" style="align-self:flex-end;padding-bottom:.5rem">
+                <input type="checkbox" name="send_once" value="true"
+                       {{ 'checked' if rule and rule.send_once else '' }}>
+                Send once then disable
+                <input type="hidden" name="send_once" value="false">
+            </label>
+        </div>
+    </div>
+
+    <!-- ── Time-based filtering ──────────────────────────────────────────────── -->
+    <div class="card" style="margin-top:1rem">
+        <h3 style="margin-top:0;display:flex;align-items:center;gap:.6rem">
+            🕐 Active Time Window
+            <span class="text-muted" style="font-size:.8rem;font-weight:400">
+                (optional — leave disabled to always fire)
+            </span>
+        </h3>
+
+        <label class="checkbox-label" style="margin-bottom:1rem">
+            <input type="checkbox" name="time_filter_enabled" value="true"
+                   id="time_filter_toggle"
+                   {{ 'checked' if rule and rule.time_filter_enabled else '' }}>
+            Enable time-based filtering
+            <input type="hidden" name="time_filter_enabled" value="false">
+        </label>
+
+        <div id="time_filter_fields"
+             style="{{ '' if (rule and rule.time_filter_enabled) else 'display:none' }}">
+
+            <div class="form-row">
+                <label>Active From
+                    <input type="time" name="active_hours_start"
+                           value="{{ rule.active_hours_start.strftime('%H:%M') if rule and rule.active_hours_start else '' }}">
+                    <small>Start of active window (in chosen timezone)</small>
+                </label>
+                <label>Active Until
+                    <input type="time" name="active_hours_end"
+                           value="{{ rule.active_hours_end.strftime('%H:%M') if rule and rule.active_hours_end else '' }}">
+                    <small>End of active window — can be before start for overnight windows</small>
+                </label>
+            </div>
+
+            <label>Timezone
+                <select name="active_timezone">
+                    {% set current_tz = rule.active_timezone if rule and rule.active_timezone else 'UTC' %}
+                    {% for tz in timezones %}
+                    <option value="{{ tz }}" {{ 'selected' if tz == current_tz else '' }}>{{ tz }}</option>
+                    {% endfor %}
+                </select>
+                <small>
+                    IANA timezone name (e.g. America/New_York, Europe/London, UTC).
+                    Overnight windows like 22:00 → 06:00 are supported.
+                </small>
+            </label>
+
+            <label class="checkbox-label" style="margin-top:.8rem">
+                <input type="checkbox" name="critical_override" value="true"
+                       {{ 'checked' if rule and rule.critical_override else '' }}>
+                Fire outside window when severity is <strong>CRITICAL</strong>
+                <input type="hidden" name="critical_override" value="false">
+                <small style="display:block;margin-top:.2rem;font-weight:400">
+                    If checked, this rule ignores the time window when a critical escalation is detected.
+                </small>
+            </label>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn-primary">{{ 'Save Changes' if rule else 'Create Alert' }}</button>
+        <a href="/alerts/" class="btn-secondary">Cancel</a>
+    </div>
+</form>
+
+<script>
+(function () {
+    const toggle = document.getElementById('time_filter_toggle');
+    const fields = document.getElementById('time_filter_fields');
+    if (toggle && fields) {
+        toggle.addEventListener('change', function () {
+            fields.style.display = this.checked ? '' : 'none';
+        });
+    }
+})();
+</script>
+</div>
+{% endblock %}
