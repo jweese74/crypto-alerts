@@ -62,3 +62,4 @@ backups/
 
 # ── Node (if any future frontend tooling) ─────────────────────────────────────
 node_modules/
+MY_NOTES.txt
